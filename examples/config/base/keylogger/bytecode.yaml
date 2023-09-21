@@ -1,0 +1,15 @@
+apiVersion: bpfd.dev/v1alpha1
+kind: KprobeProgram
+metadata:
+  labels:
+    app.kubernetes.io/name: keylogger
+  name: keylogger-example
+spec:
+  sectionname: input_handle_event
+  func_names:
+    - input_handle_event
+  # Select all nodes
+  nodeselector: {}
+  bytecode:
+    image:
+      url: quay.io/bpfd-bytecode/keylogger:latest

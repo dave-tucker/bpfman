@@ -1,0 +1,26 @@
+FROM golang:1.19 as keylogger-build
+
+RUN apt-get update && apt-get install -y \
+ clang \
+ gcc-multilib \
+ libbpf-dev \
+ bpftool
+
+RUN go install github.com/cilium/ebpf/cmd/bpf2go@master
+
+WORKDIR /usr/src/bpfd/
+COPY ./ /usr/src/bpfd/
+
+WORKDIR /usr/src/bpfd/examples/keylogger
+
+# Generate vmlinux.h
+RUN bpftool btf dump file /sys/kernel/btf/vmlinux format c > bpf/vmlinux.h
+
+# Compile keylogger
+RUN go build
+
+FROM registry.fedoraproject.org/fedora-minimal:latest
+
+COPY --from=keylogger-build  /usr/src/bpfd/examples/keylogger/keylogger .
+
+ENTRYPOINT ["keylogger"]

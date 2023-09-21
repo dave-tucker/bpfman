@@ -1,0 +1,79 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: keylogger
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: bpfd-app-keylogger
+  namespace: keylogger
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrolebinding
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: keylogger
+    app.kubernetes.io/part-of: keylogger
+    app.kubernetes.io/managed-by: keylogger
+  name: bpfd-app-rolebinding-keylogger
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: bpfd-bpfprogram-viewer-role
+subjects:
+  - kind: ServiceAccount
+    name: bpfd-app-keylogger
+    namespace: keylogger
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: keylogger-ds
+  namespace: keylogger
+  labels:
+    k8s-app: keylogger
+spec:
+  selector:
+    matchLabels:
+      name: keylogger
+  template:
+    metadata:
+      labels:
+        name: keylogger
+    spec:
+      nodeSelector: {}
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      serviceAccountName: bpfd-app-keylogger
+      tolerations:
+        # these tolerations are to have the daemonset runnable on control plane nodes
+        # remove them if your control plane nodes should not run pods
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: keylogger
+          image: quay.io/bpfd-userspace/keylogger:latest
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            privileged: true
+          env:
+            - name: NODENAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - name: keylogger-maps
+              mountPath: /run/bpfd/fs/maps
+              readOnly: true
+      volumes:
+        - name: keylogger-maps
+          hostPath:
+            path: /run/bpfd/fs/maps

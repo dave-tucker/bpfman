@@ -23,3 +23,11 @@ docker build \
  --build-arg BYTECODE_FILENAME=bpf_bpfel.o \
  -f ../packaging/container-deployment/Containerfile.bytecode \
  ./go-tracepoint-counter -t $IMAGE_TP_BC
+
+docker build \
+ --build-arg PROGRAM_NAME=keylogger \
+ --build-arg SECTION_NAME=input_handle_event \
+ --build-arg PROGRAM_TYPE=kprobe \
+ --build-arg BYTECODE_FILENAME=bpf_bpfel_x86.o \
+ -f ../packaging/container-deployment/Containerfile.bytecode \
+ ./keylogger -t ${IMAGE_KEYLOGGER_BC}
