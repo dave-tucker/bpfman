@@ -3,7 +3,7 @@
 
 use std::{
     env,
-    fs::{create_dir_all, File},
+    fs::{create_dir_all, read_to_string, File},
     io::{BufRead, BufReader},
     str::FromStr,
 };
@@ -30,9 +30,10 @@ use nix::{
     unistd::{getuid, User},
 };
 use systemd_journal_logger::{connected_to_journal, JournalLog};
+use tokio::runtime::Builder;
 use utils::{create_bpffs, set_dir_permissions};
 
-use crate::{serve::serve, utils::read_to_string};
+use crate::serve::serve;
 const BPFD_ENV_LOG_LEVEL: &str = "RUST_LOG";
 
 #[derive(Parser)]
@@ -43,80 +44,76 @@ struct Args {
 }
 
 fn main() -> anyhow::Result<()> {
-    tokio::runtime::Builder::new_multi_thread()
+    let runtime = Builder::new_multi_thread()
         .enable_all()
         .on_thread_start(|| {
             drop_linux_capabilities();
         })
         .build()
-        .unwrap()
-        .block_on(async {
-            let args = Args::parse();
-            if connected_to_journal() {
-                // If bpfd is running as a service, log to journald.
-                JournalLog::default()
-                    .with_extra_fields(vec![("VERSION", env!("CARGO_PKG_VERSION"))])
-                    .install()
-                    .unwrap();
-                manage_journal_log_level();
-                log::info!("Log using journald");
-            } else {
-                // Otherwise fall back to logging to standard error.
-                env_logger::init();
-                log::info!("Log using env_logger");
-            }
+        .expect("Unable to create tokio runtime");
+    let args = Args::parse();
+    if connected_to_journal() {
+        // If bpfd is running as a service, log to journald.
+        JournalLog::default()
+            .with_extra_fields(vec![("VERSION", env!("CARGO_PKG_VERSION"))])
+            .install()
+            .unwrap();
+        manage_journal_log_level();
+        log::info!("Log using journald");
+    } else {
+        // Otherwise fall back to logging to standard error.
+        env_logger::init();
+        log::info!("Log using env_logger");
+    }
 
-            has_cap(caps::CapSet::Effective, caps::Capability::CAP_BPF);
-            has_cap(caps::CapSet::Effective, caps::Capability::CAP_SYS_ADMIN);
+    has_cap(caps::CapSet::Effective, caps::Capability::CAP_BPF);
+    has_cap(caps::CapSet::Effective, caps::Capability::CAP_SYS_ADMIN);
 
-            setrlimit(Resource::RLIMIT_MEMLOCK, RLIM_INFINITY, RLIM_INFINITY).unwrap();
+    setrlimit(Resource::RLIMIT_MEMLOCK, RLIM_INFINITY, RLIM_INFINITY).unwrap();
 
-            // Create directories associated with bpfd
-            create_dir_all(RTDIR).context("unable to create runtime directory")?;
-            create_dir_all(RTDIR_FS).context("unable to create mountpoint")?;
-            create_dir_all(RTDIR_TC_INGRESS_DISPATCHER)
-                .context("unable to create dispatcher directory")?;
-            create_dir_all(RTDIR_TC_EGRESS_DISPATCHER)
-                .context("unable to create dispatcher directory")?;
-            create_dir_all(RTDIR_XDP_DISPATCHER)
-                .context("unable to create dispatcher directory")?;
-            create_dir_all(RTDIR_PROGRAMS).context("unable to create programs directory")?;
+    // Create directories associated with bpfd
+    create_dir_all(RTDIR).context("unable to create runtime directory")?;
+    create_dir_all(RTDIR_FS).context("unable to create mountpoint")?;
+    create_dir_all(RTDIR_TC_INGRESS_DISPATCHER).context("unable to create dispatcher directory")?;
+    create_dir_all(RTDIR_TC_EGRESS_DISPATCHER).context("unable to create dispatcher directory")?;
+    create_dir_all(RTDIR_XDP_DISPATCHER).context("unable to create dispatcher directory")?;
+    create_dir_all(RTDIR_PROGRAMS).context("unable to create programs directory")?;
 
-            if !is_bpffs_mounted()? {
-                create_bpffs(RTDIR_FS)?;
-            }
-            create_dir_all(RTDIR_FS_XDP).context("unable to create xdp distpacher dir")?;
-            create_dir_all(RTDIR_FS_TC_INGRESS)
-                .context("unable to create tc ingress dispatcher dir")?;
-            create_dir_all(RTDIR_FS_TC_EGRESS)
-                .context("unable to create tc egress dispatcher dir")?;
-            create_dir_all(RTDIR_FS_MAPS).context("unable to create maps directory")?;
-            create_dir_all(RTDIR_BPFD_CSI).context("unable to create CSI directory")?;
-            create_dir_all(RTDIR_BPFD_CSI_FS).context("unable to create socket directory")?;
+    if !is_bpffs_mounted()? {
+        create_bpffs(RTDIR_FS)?;
+    }
+    create_dir_all(RTDIR_FS_XDP).context("unable to create xdp distpacher dir")?;
+    create_dir_all(RTDIR_FS_TC_INGRESS).context("unable to create tc ingress dispatcher dir")?;
+    create_dir_all(RTDIR_FS_TC_EGRESS).context("unable to create tc egress dispatcher dir")?;
+    create_dir_all(RTDIR_FS_MAPS).context("unable to create maps directory")?;
+    create_dir_all(RTDIR_BPFD_CSI).context("unable to create CSI directory")?;
+    create_dir_all(RTDIR_BPFD_CSI_FS).context("unable to create socket directory")?;
 
-            create_dir_all(CFGDIR_STATIC_PROGRAMS)
-                .context("unable to create static programs directory")?;
+    create_dir_all(CFGDIR_STATIC_PROGRAMS).context("unable to create static programs directory")?;
 
-            create_dir_all(STDIR_BYTECODE_IMAGE_CONTENT_STORE)
-                .context("unable to create bytecode image store directory")?;
+    create_dir_all(STDIR_BYTECODE_IMAGE_CONTENT_STORE)
+        .context("unable to create bytecode image store directory")?;
 
-            set_dir_permissions(CFGDIR, CFGDIR_MODE).await;
-            set_dir_permissions(RTDIR, RTDIR_MODE).await;
-            set_dir_permissions(STDIR, STDIR_MODE).await;
+    set_dir_permissions(CFGDIR, CFGDIR_MODE);
+    set_dir_permissions(RTDIR, RTDIR_MODE);
+    set_dir_permissions(STDIR, STDIR_MODE);
 
-            let config = if let Ok(c) = read_to_string(CFGPATH_BPFD_CONFIG).await {
-                c.parse().unwrap_or_else(|_| {
-                    warn!("Unable to parse config file, using defaults");
-                    Config::default()
-                })
-            } else {
-                warn!("Unable to read config file, using defaults");
-                Config::default()
-            };
-
-            serve(config, CFGDIR_STATIC_PROGRAMS, args.csi_support).await?;
-            Ok(())
+    let config = if let Ok(c) = read_to_string(CFGPATH_BPFD_CONFIG) {
+        c.parse().unwrap_or_else(|_| {
+            warn!("Unable to parse config file, using defaults");
+            Config::default()
         })
+    } else {
+        warn!("Unable to read config file, using defaults");
+        Config::default()
+    };
+
+    let handles = serve(runtime, config, CFGDIR_STATIC_PROGRAMS, args.csi_support)?;
+    // Wait for all of them to complete.
+    for handle in handles {
+        runtime.block_on(handle).unwrap();
+    }
+    Ok(())
 }
 
 fn manage_journal_log_level() {

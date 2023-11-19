@@ -131,12 +131,12 @@ pub(crate) enum Command {
 }
 
 impl ImageManager {
-    pub(crate) async fn new<P: AsRef<Path>>(
+    pub(crate) fn new<P: AsRef<Path>>(
         base_dir: P,
         allow_unsigned: bool,
         rx: mpsc::Receiver<Command>,
     ) -> Result<Self, anyhow::Error> {
-        let cosign_verifier = CosignVerifier::new(allow_unsigned).await?;
+        let cosign_verifier = CosignVerifier::new(allow_unsigned)?;
         let config = ClientConfig {
             protocol: ClientProtocol::Https,
             ..Default::default()
@@ -519,7 +519,7 @@ mod tests {
         std::env::set_current_dir(&tmpdir).unwrap();
 
         let (_tx, rx) = mpsc::channel(32);
-        let mut mgr = ImageManager::new(tmpdir, true, rx).await.unwrap();
+        let mut mgr = ImageManager::new(tmpdir, true, rx).unwrap();
 
         let (path, _) = mgr
             .get_image(
@@ -548,7 +548,7 @@ mod tests {
         std::env::set_current_dir(&tmpdir).unwrap();
 
         let (_tx, rx) = mpsc::channel(32);
-        let mut mgr = ImageManager::new(&tmpdir, true, rx).await.unwrap();
+        let mut mgr = ImageManager::new(&tmpdir, true, rx).unwrap();
 
         mgr.get_image(
             "quay.io/bpfd-bytecode/xdp_pass_private:latest",
@@ -565,7 +565,7 @@ mod tests {
         let tmpdir = tempfile::tempdir().unwrap();
         std::env::set_current_dir(&tmpdir).unwrap();
         let (_tx, rx) = mpsc::channel(32);
-        let mut mgr = ImageManager::new(&tmpdir, true, rx).await.unwrap();
+        let mut mgr = ImageManager::new(&tmpdir, true, rx).unwrap();
 
         let (path, _) = mgr
             .get_image(
@@ -593,7 +593,7 @@ mod tests {
         std::env::set_current_dir(&tmpdir).unwrap();
 
         let (_tx, rx) = mpsc::channel(32);
-        let mut mgr = ImageManager::new(&tmpdir, true, rx).await.unwrap();
+        let mut mgr = ImageManager::new(&tmpdir, true, rx).unwrap();
 
         let result = mgr
             .get_image(
@@ -629,7 +629,7 @@ mod tests {
         ];
 
         let (_tx, rx) = mpsc::channel(32);
-        let mgr = ImageManager::new(&tmpdir, true, rx).await.unwrap();
+        let mgr = ImageManager::new(&tmpdir, true, rx).unwrap();
 
         for t in tt {
             let good_reference: Reference = t.input.parse().unwrap();

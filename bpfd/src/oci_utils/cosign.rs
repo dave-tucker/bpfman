@@ -22,17 +22,9 @@ pub struct CosignVerifier {
 }
 
 impl CosignVerifier {
-    pub(crate) async fn new(allow_unsigned: bool) -> Result<Self, anyhow::Error> {
-        // We must use spawn_blocking here.
-        // See: https://docs.rs/sigstore/0.7.2/sigstore/oauth/openidflow/index.html
-        let repo: sigstore::errors::Result<SigstoreRepository> = spawn_blocking(|| {
-            info!("Starting Cosign Verifier, downloading data from Sigstore TUF repository");
-            sigstore::tuf::SigstoreRepository::fetch(None)
-        })
-        .await
-        .map_err(|e| anyhow!("Error spawning blocking task inside of tokio: {}", e))?;
-
-        let repo: SigstoreRepository = repo?;
+    pub(crate) fn new(allow_unsigned: bool) -> Result<Self, anyhow::Error> {
+        let repo = sigstore::tuf::SigstoreRepository::fetch(None)
+            .map_err(|e| anyhow!("Error spawning blocking task inside of tokio: {}", e))?;
 
         let oci_config = ClientConfig {
             protocol: ClientProtocol::Https,

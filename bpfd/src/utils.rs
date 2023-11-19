@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright Authors of bpfd
 
-use std::{os::unix::fs::PermissionsExt, path::Path, str};
+use std::{fs::set_permissions, os::unix::fs::PermissionsExt, path::Path, str};
 
 use anyhow::{Context, Result};
 use log::{debug, info, warn};
@@ -9,7 +9,7 @@ use nix::{
     mount::{mount, MsFlags},
     net::if_::if_nametoindex,
 };
-use tokio::{fs, io::AsyncReadExt};
+use tokio::io::AsyncReadExt;
 
 use crate::errors::BpfdError;
 
@@ -32,21 +32,6 @@ pub(crate) async fn read<P: AsRef<Path>>(path: P) -> Result<Vec<u8>, BpfdError> 
     Ok(data)
 }
 
-// Like tokio::fs::read_to_string, but with O_NOCTTY set
-pub(crate) async fn read_to_string<P: AsRef<Path>>(path: P) -> Result<String, BpfdError> {
-    let mut buffer = String::new();
-    tokio::fs::OpenOptions::new()
-        .custom_flags(nix::libc::O_NOCTTY)
-        .read(true)
-        .open(path)
-        .await
-        .map_err(|e| BpfdError::Error(format!("can't open file: {e}")))?
-        .read_to_string(&mut buffer)
-        .await
-        .map_err(|e| BpfdError::Error(format!("can't read file: {e}")))?;
-    Ok(buffer)
-}
-
 pub(crate) fn get_ifindex(iface: &str) -> Result<u32, BpfdError> {
     match if_nametoindex(iface) {
         Ok(index) => {
@@ -60,9 +45,9 @@ pub(crate) fn get_ifindex(iface: &str) -> Result<u32, BpfdError> {
     }
 }
 
-pub(crate) async fn set_file_permissions(path: &str, mode: u32) {
+pub(crate) fn set_file_permissions(path: &str, mode: u32) {
     // Set the permissions on the file based on input
-    if (tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).await).is_err() {
+    if set_permissions(path, std::fs::Permissions::from_mode(mode)).is_err() {
         warn!("Unable to set permissions on file {}. Continuing", path);
     }
 }

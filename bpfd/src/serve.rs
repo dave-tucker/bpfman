@@ -8,10 +8,12 @@ use bpfd_api::{
     util::directories::STDIR_BYTECODE_IMAGE_CONTENT_STORE,
     v1::bpfd_server::BpfdServer,
 };
+use caps::runtime;
 use log::{debug, info};
 use tokio::{
     join,
     net::UnixListener,
+    runtime::Runtime,
     select,
     signal::unix::{signal, SignalKind},
     sync::mpsc,
@@ -29,11 +31,13 @@ use crate::{
     utils::{set_file_permissions, SOCK_MODE},
 };
 
-pub async fn serve(
+pub fn serve(
+    runtime: Runtime,
     config: Config,
     static_program_path: &str,
     csi_support: bool,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Vec<JoinHandle<()>>> {
+    let handles = Vec::new();
     let (tx, rx) = mpsc::channel(32);
 
     let loader = BpfdLoader::new(tx.clone());
@@ -49,7 +53,7 @@ pub async fn serve(
                     continue;
                 }
 
-                match serve_unix(path.clone(), service.clone()).await {
+                match serve_unix(runtime, path.clone(), service.clone()) {
                     Ok(handle) => listeners.push(handle),
                     Err(e) => eprintln!("Error = {e:?}"),
                 }
@@ -61,7 +65,7 @@ pub async fn serve(
     let (itx, irx) = mpsc::channel(32);
 
     let mut image_manager =
-        ImageManager::new(STDIR_BYTECODE_IMAGE_CONTENT_STORE, allow_unsigned, irx).await?;
+        ImageManager::new(STDIR_BYTECODE_IMAGE_CONTENT_STORE, allow_unsigned, irx)?;
     let image_manager_handle = tokio::spawn(async move {
         image_manager.run().await;
     });
@@ -108,7 +112,7 @@ pub async fn serve(
         }
     }
 
-    Ok(())
+    handles
 }
 
 pub(crate) async fn shutdown_handler() {
@@ -129,7 +133,8 @@ async fn join_listeners(listeners: Vec<JoinHandle<()>>) {
     }
 }
 
-async fn serve_unix(
+fn serve_unix(
+    runtime: Runtime,
     path: String,
     service: BpfdServer<BpfdLoader>,
 ) -> anyhow::Result<JoinHandle<()>> {
@@ -142,13 +147,13 @@ async fn serve_unix(
     let uds = UnixListener::bind(&path)?;
     let uds_stream = UnixListenerStream::new(uds);
     // Always set the file permissions of our listening socket.
-    set_file_permissions(&path.clone(), SOCK_MODE).await;
+    set_file_permissions(&path.clone(), SOCK_MODE);
 
     let serve = Server::builder()
         .add_service(service)
         .serve_with_incoming_shutdown(uds_stream, shutdown_handler());
 
-    Ok(tokio::spawn(async move {
+    Ok(runtime.spawn(async move {
         info!("Listening on {path}");
         if let Err(e) = serve.await {
             eprintln!("Error = {e:?}");

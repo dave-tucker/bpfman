@@ -418,7 +418,7 @@ impl ProgramData {
         self.program_bytes = Vec::new();
     }
 
-    pub(crate) async fn set_program_bytes(
+    pub(crate) fn set_program_bytes(
         &mut self,
         image_manager: Sender<ImageManagerCommand>,
     ) -> Result<(), BpfdError> {
