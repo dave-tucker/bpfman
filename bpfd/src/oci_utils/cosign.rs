@@ -12,9 +12,7 @@ use sigstore::{
     },
     errors::SigstoreError::RegistryPullManifestError,
     registry::{Auth, ClientConfig, ClientProtocol, OciReference},
-    tuf::SigstoreRepository,
 };
-use tokio::task::spawn_blocking;
 
 pub struct CosignVerifier {
     pub client: sigstore::cosign::Client,

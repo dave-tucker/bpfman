@@ -52,12 +52,11 @@ pub(crate) fn set_file_permissions(path: &str, mode: u32) {
     }
 }
 
-pub(crate) async fn set_dir_permissions(directory: &str, mode: u32) {
+pub(crate) fn set_dir_permissions(directory: &str, mode: u32) {
     // Iterate through the files in the provided directory
-    let mut entries = fs::read_dir(directory).await.unwrap();
-    while let Some(file) = entries.next_entry().await.unwrap() {
-        // Set the permissions on the file based on input
-        set_file_permissions(&file.path().into_os_string().into_string().unwrap(), mode).await;
+    for entry in std::fs::read_dir(directory).unwrap() {
+        let entry = entry.unwrap();
+        set_file_permissions(&entry.path().into_os_string().into_string().unwrap(), mode);
     }
 }
 

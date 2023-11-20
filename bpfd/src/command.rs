@@ -96,36 +96,34 @@ impl Default for Location {
 }
 
 impl Location {
-    async fn get_program_bytes(
+    fn get_program_bytes(
         &self,
         image_manager: Sender<ImageManagerCommand>,
     ) -> Result<(Vec<u8>, String), BpfdError> {
         match self {
-            Location::File(l) => Ok((crate::utils::read(l).await?, "".to_owned())),
+            Location::File(l) => Ok((std::fs::read(l)?, "".to_owned())),
             Location::Image(l) => {
                 let (tx, rx) = oneshot::channel();
                 image_manager
-                    .send(ImageManagerCommand::Pull {
+                    .blocking_send(ImageManagerCommand::Pull {
                         image: l.image_url.clone(),
                         pull_policy: l.image_pull_policy.clone(),
                         username: l.username.clone(),
                         password: l.password.clone(),
                         resp: tx,
                     })
-                    .await
                     .map_err(|e| BpfdError::BpfBytecodeError(e.into()))?;
                 let (path, bpf_function_name) = rx
-                    .await
+                    .blocking_recv()
                     .map_err(BpfdError::RpcError)?
                     .map_err(|e| BpfdError::BpfBytecodeError(e.into()))?;
 
                 let (tx, rx) = oneshot::channel();
                 image_manager
-                    .send(ImageManagerCommand::GetBytecode { path, resp: tx })
-                    .await
+                    .blocking_send(ImageManagerCommand::GetBytecode { path, resp: tx })
                     .map_err(|e| BpfdError::BpfBytecodeError(e.into()))?;
                 let bytecode = rx
-                    .await
+                    .blocking_recv()
                     .map_err(BpfdError::RpcError)?
                     .map_err(|e| BpfdError::Error(format!("Bytecode loading error: {e}")))?;
 
@@ -422,7 +420,7 @@ impl ProgramData {
         &mut self,
         image_manager: Sender<ImageManagerCommand>,
     ) -> Result<(), BpfdError> {
-        match self.location.get_program_bytes(image_manager).await {
+        match self.location.get_program_bytes(image_manager) {
             Err(e) => Err(e),
             Ok((v, s)) => {
                 match &self.location {

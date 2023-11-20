@@ -370,7 +370,6 @@ mod test {
                     url: "quay.io/bpfd-bytecode/xdp:latest".to_string(),
                     ..Default::default()
                 })),
-                ..Default::default()
             }),
             attach: Some(attach_info),
             ..Default::default()

@@ -23,12 +23,9 @@ use bpfd_api::{
     ProgramType, TcProceedOn,
 };
 use log::{debug, info, warn};
-use tokio::{
-    select,
-    sync::{
-        mpsc::{Receiver, Sender},
-        oneshot,
-    },
+use tokio::sync::{
+    mpsc::{Receiver, Sender},
+    oneshot,
 };
 
 use crate::{
@@ -40,7 +37,6 @@ use crate::{
     errors::BpfdError,
     multiprog::{Dispatcher, DispatcherId, DispatcherInfo, TcDispatcher, XdpDispatcher},
     oci_utils::image_manager::Command as ImageManagerCommand,
-    serve::shutdown_handler,
     utils::{get_ifindex, set_dir_permissions, should_map_be_pinned},
 };
 
@@ -191,8 +187,8 @@ impl BpfManager {
 
     pub(crate) fn rebuild_state(&mut self) -> Result<(), anyhow::Error> {
         debug!("BpfManager::rebuild_state()");
-        let mut programs_dir = fs::read_dir(RTDIR_PROGRAMS)?;
-        while let Ok(entry) = programs_dir.next().unwrap() {
+        for entry in fs::read_dir(RTDIR_PROGRAMS)? {
+            let entry = entry?;
             let id = entry.file_name().to_string_lossy().parse().unwrap();
             let mut program = Program::load(id)
                 .map_err(|e| BpfdError::Error(format!("cant read program state {e}")))?;
@@ -215,8 +211,8 @@ impl BpfManager {
         direction: Option<Direction>,
         path: &str,
     ) -> Result<(), anyhow::Error> {
-        let mut dispatcher_dir = fs::read_dir(path)?;
-        while let Ok(entry) = dispatcher_dir.next().unwrap() {
+        for entry in std::fs::read_dir(path)? {
+            let entry = entry?;
             let name = entry.file_name();
             let parts: Vec<&str> = name.to_str().unwrap().split('_').collect();
             if parts.len() != 2 {
@@ -285,10 +281,10 @@ impl BpfManager {
             Program::Xdp(_) | Program::Tc(_) => {
                 program.set_if_index(get_ifindex(&program.if_name().unwrap())?);
 
-                self.add_multi_attach_program(&mut program).await
+                self.add_multi_attach_program(&mut program)
             }
             Program::Tracepoint(_) | Program::Kprobe(_) | Program::Uprobe(_) => {
-                self.add_single_attach_program(&mut program).await
+                self.add_single_attach_program(&mut program)
             }
             Program::Unsupported(_) => panic!("Cannot add unsupported program"),
         };
@@ -306,7 +302,7 @@ impl BpfManager {
 
                 // Now that program is successfully loaded, update the id, maps hash table,
                 // and allow access to all maps by bpfd group members.
-                self.save_map(&mut program, id, map_owner_id).await?;
+                self.save_map(&mut program, id, map_owner_id)?;
 
                 // Only add program to bpfManager if we've completed all mutations and it's successfully loaded.
                 self.programs.insert(id, program.to_owned());
@@ -319,7 +315,7 @@ impl BpfManager {
                 // error occured, so don't error if not there and preserve original error.
                 if let Ok(data) = program.data() {
                     if let Some(pin_path) = data.map_pin_path() {
-                        let _ = self.cleanup_map_pin_path(pin_path, map_owner_id).await;
+                        let _ = self.cleanup_map_pin_path(pin_path, map_owner_id);
                     }
                 }
                 Err(e)
@@ -392,7 +388,6 @@ impl BpfManager {
             old_dispatcher,
             self.image_manager.clone(),
         )
-        .await
         .or_else(|e| {
             // If kernel ID was never set there's no pins to cleanup here so just continue
             if let Some(info) = program.kernel_info() {
@@ -581,7 +576,7 @@ impl BpfManager {
                 if p.data()?.map_pin_path().is_none() {
                     let map_pin_path = calc_map_pin_path(id);
                     p.data_mut()?.set_map_pin_path(Some(map_pin_path.clone()));
-                    create_map_pin_path(&map_pin_path).await?;
+                    create_map_pin_path(&map_pin_path)?;
 
                     for (name, map) in loader.maps_mut() {
                         if !should_map_be_pinned(name) {
@@ -630,14 +625,14 @@ impl BpfManager {
         prog.delete(id).map_err(BpfdError::BpfdProgramDeleteError)?;
 
         match prog {
-            Program::Xdp(_) | Program::Tc(_) => self.remove_multi_attach_program(&mut prog).await?,
+            Program::Xdp(_) | Program::Tc(_) => self.remove_multi_attach_program(&mut prog)?,
             Program::Tracepoint(_)
             | Program::Kprobe(_)
             | Program::Uprobe(_)
             | Program::Unsupported(_) => (),
         }
 
-        self.delete_map(id, map_owner_id).await?;
+        self.delete_map(id, map_owner_id)?;
         Ok(())
     }
 
@@ -693,8 +688,7 @@ impl BpfManager {
             next_revision,
             old_dispatcher,
             self.image_manager.clone(),
-        )
-        .await?;
+        )?;
         self.dispatchers.insert(did, dispatcher);
         Ok(())
     }
@@ -748,8 +742,7 @@ impl BpfManager {
                 next_revision,
                 old_dispatcher,
                 self.image_manager.clone(),
-            )
-            .await?;
+            )?;
             self.dispatchers.insert(did, dispatcher);
         } else {
             debug!("No dispatcher found in rebuild_multiattach_dispatcher() for {did:?}");
@@ -802,15 +795,14 @@ impl BpfManager {
     fn pull_bytecode(&self, args: PullBytecodeArgs) -> anyhow::Result<()> {
         let (tx, rx) = oneshot::channel();
         self.image_manager
-            .send(ImageManagerCommand::Pull {
+            .blocking_send(ImageManagerCommand::Pull {
                 image: args.image.image_url,
                 pull_policy: args.image.image_pull_policy.clone(),
                 username: args.image.username.clone(),
                 password: args.image.password.clone(),
                 resp: tx,
-            })
-            .await?;
-        let res = match rx.await? {
+            })?;
+        let res = match rx.blocking_recv() {
             Ok(_) => {
                 info!("Successfully pulled bytecode");
                 Ok(())
@@ -821,43 +813,32 @@ impl BpfManager {
         Ok(())
     }
 
-    pub(crate) fn process_commands(&mut self) {
-        loop {
-            // Start receiving messages
-            select! {
-                biased;
-                _ = shutdown_handler() => {
-                    info!("Signal received to stop command processing");
-                    break;
+    pub(crate) async fn process_command(&mut self) {
+        if let Some(cmd) = self.commands.recv().await {
+            match cmd {
+                Command::Load(args) => {
+                    let prog = self.add_program(args.program);
+                    // Ignore errors as they'll be propagated to caller in the RPC status
+                    let _ = args.responder.send(prog);
                 }
-                Some(cmd) = self.commands.recv() => {
-                    match cmd {
-                        Command::Load(args) => {
-                            let prog = self.add_program(args.program).await;
-                            // Ignore errors as they'll be propagated to caller in the RPC status
-                            let _ = args.responder.send(prog);
-                        },
-                        Command::Unload(args) => self.unload_command(args).await.unwrap(),
-                        Command::List { responder } => {
-                            let progs = self.list_programs();
-                            // Ignore errors as they'll be propagated to caller in the RPC status
-                            let _ = responder.send(progs);
-                        }
-                        Command::Get(args) => {
-                            let prog = self.get_program(args.id);
-                            // Ignore errors as they'll be propagated to caller in the RPC status
-                            let _ = args.responder.send(prog);
-                        },
-                        Command::PullBytecode (args) => self.pull_bytecode(args).await.unwrap(),
-                    }
+                Command::Unload(args) => self.unload_command(args).unwrap(),
+                Command::List { responder } => {
+                    let progs = self.list_programs();
+                    // Ignore errors as they'll be propagated to caller in the RPC status
+                    let _ = responder.send(progs);
                 }
+                Command::Get(args) => {
+                    let prog = self.get_program(args.id);
+                    // Ignore errors as they'll be propagated to caller in the RPC status
+                    let _ = args.responder.send(prog);
+                }
+                Command::PullBytecode(args) => self.pull_bytecode(args).unwrap(),
             }
         }
-        info!("Stopping processing commands");
     }
 
     fn unload_command(&mut self, args: UnloadArgs) -> anyhow::Result<()> {
-        let res = self.remove_program(args.id).await;
+        let res = self.remove_program(args.id);
         // Ignore errors as they'll be propagated to caller in the RPC status
         let _ = args.responder.send(res);
         Ok(())
@@ -888,7 +869,6 @@ impl BpfManager {
     ) -> Result<(), BpfdError> {
         if map_owner_id.is_none() {
             let _ = fs::remove_dir_all(map_pin_path)
-                .await
                 .map_err(|e| BpfdError::Error(format!("can't delete map dir: {e}")));
             Ok(())
         } else {
@@ -948,7 +928,7 @@ impl BpfManager {
                 // Set the permissions on the map_pin_path directory.
                 if let Some(map_pin_path) = data.map_pin_path() {
                     if let Some(path) = map_pin_path.to_str() {
-                        set_dir_permissions(path, MAPS_MODE).await;
+                        set_dir_permissions(path, MAPS_MODE);
                     } else {
                         return Err(BpfdError::Error(format!(
                             "invalid map_pin_path {} for {}",
@@ -990,7 +970,6 @@ impl BpfManager {
                 let path = calc_map_pin_path(index);
                 self.maps.remove(&index.clone());
                 fs::remove_dir_all(path)
-                    .await
                     .map_err(|e| BpfdError::Error(format!("can't delete map dir: {e}")))?;
             } else {
                 // Update all the programs still using the same map with the updated map_used_by.
@@ -1067,7 +1046,5 @@ pub fn calc_map_pin_path(id: u32) -> PathBuf {
 
 // Create the map_pin_path for a given program.
 pub fn create_map_pin_path(p: &Path) -> Result<(), BpfdError> {
-    fs::create_dir_all(p)
-        .await
-        .map_err(|e| BpfdError::Error(format!("can't create map dir: {e}")))
+    fs::create_dir_all(p).map_err(|e| BpfdError::Error(format!("can't create map dir: {e}")))
 }

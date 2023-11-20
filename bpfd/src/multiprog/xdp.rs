@@ -40,7 +40,7 @@ pub struct XdpDispatcher {
 }
 
 impl XdpDispatcher {
-    pub(crate) async fn new(
+    pub(crate) fn new(
         mode: XdpMode,
         if_index: &u32,
         if_name: String,
@@ -81,28 +81,26 @@ impl XdpDispatcher {
         );
         let (tx, rx) = oneshot::channel();
         image_manager
-            .send(ImageManagerCommand::Pull {
+            .blocking_send(ImageManagerCommand::Pull {
                 image: image.image_url.clone(),
                 pull_policy: image.image_pull_policy.clone(),
                 username: image.username.clone(),
                 password: image.password.clone(),
                 resp: tx,
             })
-            .await
             .map_err(|e| BpfdError::BpfBytecodeError(e.into()))?;
 
         let (path, bpf_function_name) = rx
-            .await
+            .blocking_recv()
             .map_err(|e| BpfdError::BpfBytecodeError(e.into()))?
             .map_err(|e| BpfdError::BpfBytecodeError(e.into()))?;
 
         let (tx, rx) = oneshot::channel();
         image_manager
-            .send(ImageManagerCommand::GetBytecode { path, resp: tx })
-            .await
+            .blocking_send(ImageManagerCommand::GetBytecode { path, resp: tx })
             .map_err(|e| BpfdError::BpfBytecodeError(e.into()))?;
         let program_bytes = rx
-            .await
+            .blocking_recv()
             .map_err(|e| BpfdError::BpfBytecodeError(e.into()))?
             .map_err(BpfdError::BpfBytecodeError)?;
         let mut loader = BpfLoader::new()
@@ -125,7 +123,7 @@ impl XdpDispatcher {
             loader: Some(loader),
             program_name: Some(bpf_function_name),
         };
-        dispatcher.attach_extensions(&mut extensions).await?;
+        dispatcher.attach_extensions(&mut extensions)?;
         dispatcher.attach()?;
         dispatcher.save()?;
         if let Some(mut old) = old_dispatcher {
@@ -168,10 +166,7 @@ impl XdpDispatcher {
         Ok(())
     }
 
-    async fn attach_extensions(
-        &mut self,
-        extensions: &mut [&mut XdpProgram],
-    ) -> Result<(), BpfdError> {
+    fn attach_extensions(&mut self, extensions: &mut [&mut XdpProgram]) -> Result<(), BpfdError> {
         debug!(
             "XdpDispatcher::attach_extensions() for if_index {}, revision {}",
             self.if_index, self.revision
@@ -258,7 +253,7 @@ impl XdpDispatcher {
                 if v.data.map_pin_path().is_none() {
                     let map_pin_path = calc_map_pin_path(id);
                     v.data.set_map_pin_path(Some(map_pin_path.clone()));
-                    create_map_pin_path(&map_pin_path).await?;
+                    create_map_pin_path(&map_pin_path)?;
 
                     for (name, map) in loader.maps_mut() {
                         if !should_map_be_pinned(name) {

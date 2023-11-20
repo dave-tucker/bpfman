@@ -25,7 +25,7 @@ pub(crate) enum Dispatcher {
 }
 
 impl Dispatcher {
-    pub async fn new(
+    pub fn new(
         config: Option<&InterfaceConfig>,
         programs: &mut [&mut Program],
         revision: u32,
@@ -58,8 +58,7 @@ impl Dispatcher {
                     revision,
                     old_dispatcher,
                     image_manager,
-                )
-                .await?;
+                )?;
                 Dispatcher::Xdp(x)
             }
             ProgramType::Tc => {
@@ -73,8 +72,7 @@ impl Dispatcher {
                     revision,
                     old_dispatcher,
                     image_manager,
-                )
-                .await?;
+                )?;
                 Dispatcher::Tc(t)
             }
             _ => return Err(BpfdError::DispatcherNotRequired),

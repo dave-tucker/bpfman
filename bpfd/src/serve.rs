@@ -8,10 +8,9 @@ use bpfd_api::{
     util::directories::STDIR_BYTECODE_IMAGE_CONTENT_STORE,
     v1::bpfd_server::BpfdServer,
 };
-use caps::runtime;
+
 use log::{debug, info};
 use tokio::{
-    join,
     net::UnixListener,
     runtime::Runtime,
     select,
@@ -36,49 +35,56 @@ pub fn serve(
     config: Config,
     static_program_path: &str,
     csi_support: bool,
-) -> anyhow::Result<Vec<JoinHandle<()>>> {
-    let handles = Vec::new();
+) -> anyhow::Result<()> {
     let (tx, rx) = mpsc::channel(32);
 
     let loader = BpfdLoader::new(tx.clone());
     let service = BpfdServer::new(loader);
 
-    let mut listeners: Vec<_> = Vec::new();
+    let endpoints = config.grpc.endpoints.clone();
+    let listeners_handle = runtime.spawn(async move {
+        let mut listeners: Vec<_> = Vec::new();
+        for endpoint in endpoints {
+            match endpoint {
+                config::Endpoint::Unix { path, enabled } => {
+                    if !enabled {
+                        info!("Skipping disabled endpoint on {path}");
+                        continue;
+                    }
 
-    for endpoint in &config.grpc.endpoints {
-        match endpoint {
-            config::Endpoint::Unix { path, enabled } => {
-                if !enabled {
-                    info!("Skipping disabled endpoint on {path}");
-                    continue;
-                }
-
-                match serve_unix(runtime, path.clone(), service.clone()) {
-                    Ok(handle) => listeners.push(handle),
-                    Err(e) => eprintln!("Error = {e:?}"),
+                    match serve_unix(path.clone(), service.clone()).await {
+                        Ok(handle) => listeners.push(handle),
+                        Err(e) => eprintln!("Error = {e:?}"),
+                    }
                 }
             }
         }
-    }
+        for listener in listeners {
+            match listener.await {
+                Ok(()) => {}
+                Err(e) => eprintln!("Error = {e:?}"),
+            }
+        }
+    });
 
     let allow_unsigned = config.signing.as_ref().map_or(true, |s| s.allow_unsigned);
     let (itx, irx) = mpsc::channel(32);
 
     let mut image_manager =
         ImageManager::new(STDIR_BYTECODE_IMAGE_CONTENT_STORE, allow_unsigned, irx)?;
-    let image_manager_handle = tokio::spawn(async move {
+    let image_manager_handle = runtime.spawn(async move {
         image_manager.run().await;
     });
 
     let mut bpf_manager = BpfManager::new(config, rx, itx);
-    bpf_manager.rebuild_state().await?;
+    bpf_manager.rebuild_state()?;
 
-    let static_programs = get_static_programs(static_program_path).await?;
+    let static_programs = get_static_programs(static_program_path)?;
 
     // Load any static programs first
     if !static_programs.is_empty() {
         for prog in static_programs {
-            let ret_prog = bpf_manager.add_program(prog).await?;
+            let ret_prog = bpf_manager.add_program(prog)?;
             // Get the Kernel Info.
             let kernel_info = ret_prog
                 .kernel_info()
@@ -86,33 +92,23 @@ pub fn serve(
             info!("Loaded static program with program id {}", kernel_info.id)
         }
     };
+    let mut handles = vec![listeners_handle, image_manager_handle];
+    
     if csi_support {
         let storage_manager = StorageManager::new(tx);
-        let storage_manager_handle = tokio::spawn(storage_manager.run());
-        let (_, res_image, res_storage, _) = join!(
-            join_listeners(listeners),
-            image_manager_handle,
-            storage_manager_handle,
-            bpf_manager.process_commands()
-        );
-        if let Some(e) = res_storage.err() {
-            return Err(e.into());
-        }
-        if let Some(e) = res_image.err() {
-            return Err(e.into());
-        }
-    } else {
-        let (_, res_image, _) = join!(
-            join_listeners(listeners),
-            image_manager_handle,
-            bpf_manager.process_commands()
-        );
-        if let Some(e) = res_image.err() {
-            return Err(e.into());
-        }
+        let storage_manager_handle = runtime.spawn(storage_manager.run());
+        handles.push(storage_manager_handle);
     }
 
-    handles
+    loop {
+        
+            _ = shutdown_handler() => {
+                info!("Signal received to stop command processing");
+                return;
+            }
+            _ = bpf_manager.process_command() => {}
+        }
+    
 }
 
 pub(crate) async fn shutdown_handler() {
@@ -124,17 +120,7 @@ pub(crate) async fn shutdown_handler() {
     }
 }
 
-async fn join_listeners(listeners: Vec<JoinHandle<()>>) {
-    for listener in listeners {
-        match listener.await {
-            Ok(()) => {}
-            Err(e) => eprintln!("Error = {e:?}"),
-        }
-    }
-}
-
-fn serve_unix(
-    runtime: Runtime,
+async fn serve_unix(
     path: String,
     service: BpfdServer<BpfdLoader>,
 ) -> anyhow::Result<JoinHandle<()>> {
@@ -153,7 +139,7 @@ fn serve_unix(
         .add_service(service)
         .serve_with_incoming_shutdown(uds_stream, shutdown_handler());
 
-    Ok(runtime.spawn(async move {
+    Ok(tokio::spawn(async move {
         info!("Listening on {path}");
         if let Err(e) = serve.await {
             eprintln!("Error = {e:?}");

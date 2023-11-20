@@ -13,6 +13,7 @@ mod command;
 mod dispatcher_config;
 mod errors;
 mod multiprog;
+mod netlink;
 mod oci_utils;
 mod rpc;
 mod serve;
@@ -108,11 +109,7 @@ fn main() -> anyhow::Result<()> {
         Config::default()
     };
 
-    let handles = serve(runtime, config, CFGDIR_STATIC_PROGRAMS, args.csi_support)?;
-    // Wait for all of them to complete.
-    for handle in handles {
-        runtime.block_on(handle).unwrap();
-    }
+    serve(runtime, config, CFGDIR_STATIC_PROGRAMS, args.csi_support)?;
     Ok(())
 }
 
