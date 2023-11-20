@@ -955,7 +955,7 @@ impl BpfManager {
                 // Set the permissions on the map_pin_path directory.
                 if let Some(map_pin_path) = data.map_pin_path() {
                     if let Some(path) = map_pin_path.to_str() {
-                        set_dir_permissions(path, MAPS_MODE).await;
+                        set_dir_permissions(path, MAPS_MODE);
                     } else {
                         return Err(BpfdError::Error(format!(
                             "invalid map_pin_path {} for {}",

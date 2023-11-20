@@ -142,7 +142,7 @@ async fn serve_unix(
     let uds = UnixListener::bind(&path)?;
     let uds_stream = UnixListenerStream::new(uds);
     // Always set the file permissions of our listening socket.
-    set_file_permissions(&path.clone(), SOCK_MODE).await;
+    set_file_permissions(&path.clone(), SOCK_MODE);
 
     let serve = Server::builder()
         .add_service(service)

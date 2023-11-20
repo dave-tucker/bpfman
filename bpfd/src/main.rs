@@ -27,12 +27,11 @@ use log::{debug, error, info, warn};
 use nix::{
     libc::RLIM_INFINITY,
     sys::resource::{setrlimit, Resource},
-    unistd::{getuid, User},
 };
 use systemd_journal_logger::{connected_to_journal, JournalLog};
 use utils::{create_bpffs, set_dir_permissions};
 
-use crate::{serve::serve, utils::read_to_string};
+use crate::serve::serve;
 const BPFD_ENV_LOG_LEVEL: &str = "RUST_LOG";
 
 #[derive(Parser)]
@@ -100,11 +99,11 @@ fn main() -> anyhow::Result<()> {
             create_dir_all(STDIR_BYTECODE_IMAGE_CONTENT_STORE)
                 .context("unable to create bytecode image store directory")?;
 
-            set_dir_permissions(CFGDIR, CFGDIR_MODE).await;
-            set_dir_permissions(RTDIR, RTDIR_MODE).await;
-            set_dir_permissions(STDIR, STDIR_MODE).await;
+            set_dir_permissions(CFGDIR, CFGDIR_MODE);
+            set_dir_permissions(RTDIR, RTDIR_MODE);
+            set_dir_permissions(STDIR, STDIR_MODE);
 
-            let config = if let Ok(c) = read_to_string(CFGPATH_BPFD_CONFIG).await {
+            let config = if let Ok(c) = std::fs::read_to_string(CFGPATH_BPFD_CONFIG) {
                 c.parse().unwrap_or_else(|_| {
                     warn!("Unable to parse config file, using defaults");
                     Config::default()
@@ -144,35 +143,11 @@ fn has_cap(cset: caps::CapSet, cap: caps::Capability) {
 }
 
 fn drop_linux_capabilities() {
-    let uid = getuid();
-    let res = match User::from_uid(uid) {
-        Ok(res) => res.unwrap(),
-        Err(e) => {
-            warn!("Unable to map user id {} to a name. err: {}", uid, e);
-            debug!(
-                "Running as user id {}, skip dropping all capabilities for spawned threads",
-                uid
-            );
-            return;
-        }
-    };
-
-    if res.name == "bpfd" {
-        debug!(
-            "Running as user {}, dropping all capabilities for spawned threads",
-            res.name
-        );
-        drop_all_cap(caps::CapSet::Ambient);
-        drop_all_cap(caps::CapSet::Bounding);
-        drop_all_cap(caps::CapSet::Effective);
-        drop_all_cap(caps::CapSet::Inheritable);
-        drop_all_cap(caps::CapSet::Permitted);
-    } else {
-        debug!(
-            "Running as user {}, skip dropping all capabilities for spawned threads",
-            res.name
-        );
-    }
+    drop_all_cap(caps::CapSet::Ambient);
+    drop_all_cap(caps::CapSet::Bounding);
+    drop_all_cap(caps::CapSet::Effective);
+    drop_all_cap(caps::CapSet::Inheritable);
+    drop_all_cap(caps::CapSet::Permitted);
 }
 
 fn is_bpffs_mounted() -> Result<bool, anyhow::Error> {
