@@ -64,11 +64,16 @@ impl TcDispatcher {
         if_name: String,
         revision: u32,
     ) -> Result<Self, BpfmanError> {
-        let db_tree = root_db
-            .open_tree(format!(
+        let tree_name = if if_index == 0 && revision == 0 {
+            format!("{}_test", TC_DISPATCHER_PREFIX)
+        } else {
+            format!(
                 "{}_{}_{}_{}",
                 TC_DISPATCHER_PREFIX, if_index, direction, revision
-            ))
+            )
+        };
+        let db_tree = root_db
+            .open_tree(tree_name)
             .expect("Unable to open tc dispatcher database tree");
 
         let mut dp = Self {
@@ -169,15 +174,21 @@ impl TcDispatcher {
             Ingress => RTDIR_FS_TC_INGRESS,
             Egress => RTDIR_FS_TC_EGRESS,
         };
-        let path = format!("{base}/dispatcher_{if_index}_{revision}");
+        let path = if if_index == 0 && revision == 0 {
+            RTDIR_FS_TEST_TC_DISPATCHER.to_string()
+        } else {
+            format!("{base}/dispatcher_{if_index}_{revision}")
+        };
         fs::create_dir_all(path).unwrap();
 
         self.loader = Some(loader);
         self.set_num_extensions(extensions.len())?;
         self.set_program_name(TC_DISPATCHER_PROGRAM_NAME)?;
 
-        self.attach_extensions(&mut extensions)?;
-        self.attach(root_db, old_dispatcher).await?;
+        if if_index != 0 && revision != 0 {
+            self.attach_extensions(&mut extensions)?;
+            self.attach(root_db, old_dispatcher).await?;
+        }
         Ok(())
     }
 

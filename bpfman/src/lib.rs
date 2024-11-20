@@ -18,15 +18,16 @@ use aya::{
         tc::{SchedClassifierLink, SchedClassifierLinkId, TcAttachOptions},
         trace_point::TracePointLink,
         uprobe::UProbeLink,
-        FEntry, FExit, KProbe, LinkOrder as AyaLinkOrder, SchedClassifier, TcAttachType,
-        TracePoint, UProbe,
+        Extension, FEntry, FExit, KProbe, LinkOrder as AyaLinkOrder, ProbeKind, SchedClassifier,
+        TcAttachType, TracePoint, UProbe, Xdp,
     },
-    Btf, EbpfLoader,
+    Btf, Ebpf, EbpfLoader,
 };
+use aya_obj::programs::XdpAttachType;
 use log::{debug, error, info, warn};
 use sled::{Config as SledConfig, Db};
 use tokio::time::{sleep, Duration};
-use types::AttachOrder;
+use types::{AttachInfo, AttachOrder};
 use utils::{id_from_tree_name, initialize_bpfman};
 
 use crate::{
@@ -43,7 +44,7 @@ use crate::{
         Program, ProgramData, ProgramType, TcxProgram, PROGRAM_PREFIX,
     },
     utils::{
-        bytes_to_string, bytes_to_u32, get_error_msg_from_stderr, get_ifindex, open_config_file,
+        bytes_to_string, bytes_to_u32, get_error_msg_from_stderr, open_config_file,
         set_dir_permissions, should_map_be_pinned, sled_insert,
     },
 };
@@ -82,15 +83,15 @@ pub(crate) mod directories {
     // RuntimeDirectory: /run/bpfman/
     pub(crate) const RTDIR_MODE: u32 = 0o6770;
     pub(crate) const RTDIR: &str = "/run/bpfman";
-    pub(crate) const RTDIR_XDP_DISPATCHER: &str = "/run/bpfman/dispatchers/xdp";
-    pub(crate) const RTDIR_TC_INGRESS_DISPATCHER: &str = "/run/bpfman/dispatchers/tc-ingress";
-    pub(crate) const RTDIR_TC_EGRESS_DISPATCHER: &str = "/run/bpfman/dispatchers/tc-egress";
     pub(crate) const RTDIR_FS: &str = "/run/bpfman/fs";
     pub(crate) const RTDIR_FS_TC_INGRESS: &str = "/run/bpfman/fs/tc-ingress";
     pub(crate) const RTDIR_FS_TC_EGRESS: &str = "/run/bpfman/fs/tc-egress";
     pub(crate) const RTDIR_FS_XDP: &str = "/run/bpfman/fs/xdp";
+    pub(crate) const RTDIR_FS_DISPATCHER_TEST: &str = "/run/bpfman/fs/dispatcher-test";
+    pub(crate) const RTDIR_FS_TEST_TC_DISPATCHER: &str = "/run/bpfman/fs/dispatcher-test/tc";
+    pub(crate) const RTDIR_FS_TEST_XDP_DISPATCHER: &str = "/run/bpfman/fs/dispatcher-test/xdp";
+    pub(crate) const RTDIR_FS_LINKS: &str = "/run/bpfman/fs/links";
     pub(crate) const RTDIR_FS_MAPS: &str = "/run/bpfman/fs/maps";
-    pub(crate) const RTDIR_PROGRAMS: &str = "/run/bpfman/programs";
     // The TUF repository is used to store Rekor and Fulcio public keys.
     pub(crate) const RTDIR_TUF: &str = "/run/bpfman/tuf";
     // StateDirectory: /var/lib/bpfman/
@@ -110,10 +111,10 @@ pub(crate) fn get_db_config() -> SledConfig {
     SledConfig::default().temporary(true)
 }
 
-/// Adds an eBPF program to the system.
+/// Adds eBPF programs to the system.
 ///
-/// This function takes a `Program` and performs the necessary loading
-/// and attaching operations to add it to the system. It supports
+/// This function takes a collection of `Program` and performs the necessary
+/// loading and attaching operations to add it to the system. It supports
 /// various types of eBPF programs such as XDP, TC, TCX, Tracepoint,
 /// Kprobe, Uprobe, Fentry, and Fexit. The program can be added from a
 /// locally built bytecode file or a remote bytecode image. If the
@@ -132,7 +133,7 @@ pub(crate) fn get_db_config() -> SledConfig {
 /// # Example
 ///
 /// ```rust,no_run
-/// use bpfman::add_program;
+/// use bpfman::add_programs;
 /// use bpfman::errors::BpfmanError;
 /// use bpfman::types::{KprobeProgram, Location, Program, ProgramData};
 /// use std::collections::HashMap;
@@ -202,95 +203,116 @@ pub(crate) fn get_db_config() -> SledConfig {
 ///
 /// This function is asynchronous and should be awaited in an
 /// asynchronous context.
-pub async fn add_program(program: Program) -> Result<Program, BpfmanError> {
-    let kind = program
-        .get_data()
-        .get_kind()
-        .unwrap_or(Some(ProgramType::Unspec))
-        .unwrap_or(ProgramType::Unspec);
-    let name = program
-        .get_data()
-        .get_name()
-        .unwrap_or("not set".to_string());
-    info!("Request to load {kind} program named \"{name}\"");
+pub async fn add_programs(programs: Vec<Program>) -> Result<Vec<Program>, BpfmanError> {
+    info!("Request to load {} programs", programs.len());
 
-    let result = add_program_internal(program).await;
+    let result = add_programs_internal(programs).await;
 
     match result {
         Ok(ref p) => {
-            let id = p.get_data().get_id().unwrap_or(0);
-            info!("Success: loaded {kind} program named \"{name}\" with id {id}");
+            for prog in p.iter() {
+                let kind = prog
+                    .get_data()
+                    .get_kind()
+                    .unwrap_or(Some(ProgramType::Unspec));
+                let kind = kind.unwrap_or(ProgramType::Unspec);
+                let name = prog.get_data().get_name().unwrap_or("not set".to_string());
+                info!("Success: loaded {kind} program named \"{name}\"");
+            }
         }
         Err(ref e) => {
-            error!("Error: failed to load {kind} program named \"{name}\": {e}");
+            error!("Error: failed to load programs: {e}");
         }
     };
     result
 }
 
-async fn add_program_internal(mut program: Program) -> Result<Program, BpfmanError> {
+async fn add_programs_internal(mut programs: Vec<Program>) -> Result<Vec<Program>, BpfmanError> {
     let (config, root_db) = &setup().await?;
     let mut image_manager = init_image_manager().await?;
-    // This is only required in the add_program api
-    program.get_data_mut().load(root_db)?;
 
-    let map_owner_id = program.get_data().get_map_owner_id()?;
-    // Set map_pin_path if we're using another program's maps
-    if let Some(map_owner_id) = map_owner_id {
-        let map_pin_path = is_map_owner_id_valid(root_db, map_owner_id)?;
-        program.get_data_mut().set_map_pin_path(&map_pin_path)?;
+    // This is only required in the add_program api
+    for program in programs.iter_mut() {
+        program.get_data_mut().load(root_db)?;
     }
 
-    program
-        .get_data_mut()
-        .set_program_bytes(root_db, &mut image_manager)
-        .await?;
+    // Since all the programs are loaded from the same bytecode image
+    // a lot of the data is the same. This is why we can just use the
+    // first program to get the map_owner_id.
+    let map_owner_id = programs[0].get_data().get_map_owner_id()?;
 
-    let result = match program {
-        Program::Xdp(_) | Program::Tc(_) => {
-            let if_name = program.if_name()?;
-            program.set_if_index(get_ifindex(&if_name)?)?;
-            add_multi_attach_program(root_db, &mut program, &mut image_manager, config).await
+    // Set map_pin_path if we're using another program's maps
+    if let Some(map_owner_id) = map_owner_id {
+        for program in programs.iter_mut() {
+            let map_pin_path = is_map_owner_id_valid(root_db, map_owner_id)?;
+            program.get_data_mut().set_map_pin_path(&map_pin_path)?;
         }
-        Program::Tcx(_) => {
-            let if_name = program.if_name()?;
-            program.set_if_index(get_ifindex(&if_name)?)?;
-            add_single_attach_program(root_db, &mut program)
-        }
-        Program::Tracepoint(_)
-        | Program::Kprobe(_)
-        | Program::Uprobe(_)
-        | Program::Fentry(_)
-        | Program::Fexit(_) => add_single_attach_program(root_db, &mut program),
-        Program::Unsupported(_) => panic!("Cannot add unsupported program"),
-    };
+    }
 
-    match result {
-        Ok(id) => {
-            // Now that program is successfully loaded, update the id, maps hash table,
-            // and allow access to all maps by bpfman group members.
-            save_map(root_db, &mut program, id, map_owner_id)?;
+    // This will iterate over all the programs and set the program bytes
+    // The image is only pulled once and the bytes are set for each program
+    for program in programs.iter_mut() {
+        program
+            .get_data_mut()
+            .set_program_bytes(root_db, &mut image_manager)
+            .await?;
+    }
 
-            // Swap the db tree to be persisted with the unique program ID generated
-            // by the kernel.
-            program.get_data_mut().swap_tree(root_db, id)?;
+    // Create a single instance of the loader to load all the programs
+    // This ensures that global variables are shared between programs
+    // in the same bytecode image.
+    let mut loader = EbpfLoader::new();
+    loader.allow_unsupported_maps();
 
-            Ok(program)
-        }
-        Err(e) => {
-            // Cleanup any directories associated with the map_pin_path.
-            // map_pin_path may or may not exist depending on where the original
-            // error occured, so don't error if not there and preserve original error.
+    // Global data is the same for all programs
+    let global_data = programs[0].get_data().get_global_data()?;
+    for (key, value) in global_data.iter() {
+        loader.set_global(key, value.as_slice(), true);
+    }
+
+    // Load the bytecode
+    let mut ebpf = loader.load(&programs[0].get_data().get_program_bytes()?)?;
+
+    let mut results = vec![];
+    for program in programs.iter_mut() {
+        let res = match program {
+            Program::Unsupported(_) => panic!("Cannot add unsupported program"),
+            _ => load_program(root_db, &mut ebpf, program),
+        };
+        results.push(res);
+    }
+
+    let program_ids = results
+        .iter()
+        .filter_map(|r| r.as_ref().ok())
+        .copied()
+        .collect::<Vec<u32>>();
+    let err_results: Vec<BpfmanError> = results.into_iter().filter_map(|r| r.err()).collect();
+    if !err_results.is_empty() {
+        for program in programs.iter() {
             if let Ok(Some(pin_path)) = program.get_data().get_map_pin_path() {
                 let _ = cleanup_map_pin_path(&pin_path, map_owner_id);
             }
-
-            // Cleanup any program that failed to create. Ignore any delete errors.
-            let _ = program.delete(root_db);
-
-            Err(e)
+            for p in programs.iter() {
+                let _ = p.delete(root_db);
+            }
         }
+        return Err(BpfmanError::ProgramsLoadFailure(err_results));
     }
+
+    for (program, id) in programs.iter_mut().zip(program_ids) {
+        // Now that program is successfully loaded, update the id, maps hash table,
+        // and allow access to all maps by bpfman group members.
+        save_map(root_db, program, id, map_owner_id)?;
+
+        // Swap the db tree to be persisted with the unique program ID generated
+        // by the kernel.
+        program.get_data_mut().swap_tree(root_db, id)?;
+
+        save_map(root_db, program, program.get_data().get_id()?, map_owner_id)?;
+    }
+
+    Ok(programs)
 }
 
 /// Removes an eBPF program specified by its ID.
@@ -437,6 +459,65 @@ async fn remove_program_internal(
     delete_map(root_db, id, map_owner_id)?;
 
     Ok(())
+}
+
+pub async fn attach_program(id: u32, attach_info: Option<AttachInfo>) -> Result<(), BpfmanError> {
+    let (config, root_db) = match setup().await {
+        Ok((c, r)) => &(c, r),
+        Err(e) => {
+            error!("Error: Request to attach program with id {id} but unable to open db: {e}");
+            return Err(e);
+        }
+    };
+
+    let prog = match get(root_db, &id) {
+        Some(p) => p,
+        None => {
+            error!("Error: Request to attach program with id {id} but id does not exist or was not created by bpfman");
+            return Err(BpfmanError::Error(format!(
+                "Program {0} does not exist or was not created by bpfman",
+                id,
+            )));
+        }
+    };
+
+    let kind = prog
+        .get_data()
+        .get_kind()
+        .unwrap_or(Some(ProgramType::Unspec))
+        .unwrap_or(ProgramType::Unspec);
+
+    let name = prog.get_data().get_name().unwrap_or("not set".to_string());
+    info!("Request to attach {kind} program named \"{name}\" with id {id}");
+
+    let result = attach_program_internal(config, root_db, prog, attach_info).await;
+
+    match result {
+        Ok(_) => info!("Success: attached {kind} program named \"{name}\" with id {id}"),
+        Err(ref e) => error!("Error: failed to attach {kind} program named \"{name}\": {e}"),
+    };
+    result
+}
+
+async fn attach_program_internal(
+    _config: &Config,
+    root_db: &Db,
+    mut program: Program,
+    attach_info: Option<AttachInfo>,
+) -> Result<(), BpfmanError> {
+    // Write attach info into the database
+    program.attach(attach_info.as_ref())?;
+
+    match program {
+        Program::Xdp(_) | Program::Tc(_) => attach_multi_attach_program(root_db, &mut program),
+        Program::Tcx(_)
+        | Program::Tracepoint(_)
+        | Program::Kprobe(_)
+        | Program::Uprobe(_)
+        | Program::Fentry(_)
+        | Program::Fexit(_)
+        | Program::Unsupported(_) => attach_single_attach_program(root_db, &mut program),
+    }
 }
 
 /// Lists the currently loaded eBPF programs.
@@ -1021,8 +1102,9 @@ async fn setup() -> Result<(Config, Db), BpfmanError> {
     Ok((open_config_file(), init_database(get_db_config()).await?))
 }
 
-async fn add_multi_attach_program(
+async fn load_multi_attach_program(
     root_db: &Db,
+    loader: &mut Ebpf,
     program: &mut Program,
     image_manager: &mut ImageManager,
     config: &Config,
@@ -1030,15 +1112,7 @@ async fn add_multi_attach_program(
     debug!("BpfManager::add_multi_attach_program()");
     let name = &program.get_data().get_name()?;
 
-    // This load is just to verify the BPF Function Name is valid.
-    // The actual load is performed in the XDP or TC logic.
-    // don't pin maps here.
-    let mut ext_loader = EbpfLoader::new()
-        .allow_unsupported_maps()
-        .extension(name)
-        .load(&program.get_data().get_program_bytes()?)?;
-
-    match ext_loader.program_mut(name) {
+    match loader.program_mut(name) {
         Some(_) => Ok(()),
         None => Err(BpfmanError::BpfFunctionNameNotValid(name.to_owned())),
     }?;
@@ -1102,65 +1176,59 @@ async fn add_multi_attach_program(
     Ok(id)
 }
 
-pub(crate) fn add_single_attach_program(root_db: &Db, p: &mut Program) -> Result<u32, BpfmanError> {
-    debug!("BpfManager::add_single_attach_program()");
+pub(crate) fn load_program(
+    root_db: &Db,
+    loader: &mut Ebpf,
+    p: &mut Program,
+) -> Result<u32, BpfmanError> {
+    debug!("BpfManager::load_single_attach_program()");
     let name = &p.get_data().get_name()?;
-    let mut bpf = EbpfLoader::new();
-
-    let data = &p.get_data().get_global_data()?;
-    for (key, value) in data {
-        bpf.set_global(key, value.as_slice(), true);
-    }
-
-    // If map_pin_path is set already it means we need to use a pin
-    // path which should already exist on the system.
-    if let Some(map_pin_path) = p.get_data().get_map_pin_path()? {
-        debug!(
-            "single-attach program {name} is using maps from {:?}",
-            map_pin_path
-        );
-        bpf.map_pin_path(map_pin_path);
-    }
-
-    let mut loader = bpf
-        .allow_unsupported_maps()
-        .load(&p.get_data().get_program_bytes()?)?;
 
     let raw_program = loader
         .program_mut(name)
         .ok_or(BpfmanError::BpfFunctionNameNotValid(name.to_owned()))?;
 
     let res = match p {
+        Program::Tc(ref mut program) => {
+            let ext: &mut Extension = raw_program.try_into()?;
+            // TODO: this needs to be replaced with a create if not exists type function
+            let dispatcher = SchedClassifier::from_pin(RTDIR_FS_TEST_TC_DISPATCHER).unwrap();
+            let fd = dispatcher.fd()?.try_clone()?;
+            ext.load(fd, "compat_test")?;
+            program.get_data_mut().set_kernel_info(&ext.info()?)?;
+
+            let id = program.data.get_id()?;
+
+            ext.pin(format!("{RTDIR_FS}/prog_{}", id))
+                .map_err(BpfmanError::UnableToPinProgram)?;
+
+            Ok(id)
+        }
+        Program::Xdp(ref mut program) => {
+            let ext: &mut Extension = raw_program.try_into()?;
+            // TODO: this needs to be replaced with a create if not exists type function
+            let dispatcher =
+                Xdp::from_pin(RTDIR_FS_TEST_XDP_DISPATCHER, XdpAttachType::Interface).unwrap();
+            let fd = dispatcher.fd()?.try_clone()?;
+            ext.load(fd, "compat_test")?;
+            program.get_data_mut().set_kernel_info(&ext.info()?)?;
+
+            let id = program.data.get_id()?;
+
+            ext.pin(format!("{RTDIR_FS}/prog_{}", id))
+                .map_err(BpfmanError::UnableToPinProgram)?;
+
+            Ok(id)
+        }
         Program::Tracepoint(ref mut program) => {
-            let tracepoint = program.get_tracepoint()?;
-            let parts: Vec<&str> = tracepoint.split('/').collect();
-            if parts.len() != 2 {
-                return Err(BpfmanError::InvalidAttach(
-                    program.get_tracepoint()?.to_string(),
-                ));
-            }
-            let category = parts[0].to_owned();
-            let name = parts[1].to_owned();
-
             let tracepoint: &mut TracePoint = raw_program.try_into()?;
-
             tracepoint.load()?;
+
             program
                 .get_data_mut()
                 .set_kernel_info(&tracepoint.info()?)?;
 
             let id = program.data.get_id()?;
-
-            let link_id = tracepoint.attach(&category, &name)?;
-
-            let owned_link: TracePointLink = tracepoint.take_link(link_id)?;
-            let fd_link: FdLink = owned_link
-                .try_into()
-                .expect("unable to get owned tracepoint attach link");
-
-            fd_link
-                .pin(format!("{RTDIR_FS}/prog_{}_link", id))
-                .map_err(BpfmanError::UnableToPinLink)?;
 
             tracepoint
                 .pin(format!("{RTDIR_FS}/prog_{}", id))
@@ -1173,12 +1241,6 @@ pub(crate) fn add_single_attach_program(root_db: &Db, p: &mut Program) -> Result
                 true => Kretprobe,
                 false => Kprobe,
             };
-
-            if requested_probe_type == Kretprobe && program.get_offset()? != 0 {
-                return Err(BpfmanError::Error(format!(
-                    "offset not allowed for {Kretprobe}"
-                )));
-            }
 
             let kprobe: &mut KProbe = raw_program.try_into()?;
             kprobe.load()?;
@@ -1195,17 +1257,6 @@ pub(crate) fn add_single_attach_program(root_db: &Db, p: &mut Program) -> Result
             program.get_data_mut().set_kernel_info(&kprobe.info()?)?;
 
             let id = program.data.get_id()?;
-
-            let link_id = kprobe.attach(program.get_fn_name()?, program.get_offset()?)?;
-
-            let owned_link: KProbeLink = kprobe.take_link(link_id)?;
-            let fd_link: FdLink = owned_link
-                .try_into()
-                .expect("unable to get owned kprobe attach link");
-
-            fd_link
-                .pin(format!("{RTDIR_FS}/prog_{}_link", id))
-                .map_err(BpfmanError::UnableToPinLink)?;
 
             kprobe
                 .pin(format!("{RTDIR_FS}/prog_{}", id))
@@ -1236,6 +1287,163 @@ pub(crate) fn add_single_attach_program(root_db: &Db, p: &mut Program) -> Result
             let id = program.data.get_id()?;
 
             let program_pin_path = format!("{RTDIR_FS}/prog_{}", id);
+
+            uprobe
+                .pin(program_pin_path.clone())
+                .map_err(BpfmanError::UnableToPinProgram)?;
+
+            Ok(id)
+        }
+        Program::Fentry(ref mut program) => {
+            let fn_name = program.get_fn_name()?;
+            let btf = Btf::from_sys_fs()?;
+            let fentry: &mut FEntry = raw_program.try_into()?;
+            fentry
+                .load(&fn_name, &btf)
+                .map_err(BpfmanError::BpfProgramError)?;
+            program.get_data_mut().set_kernel_info(&fentry.info()?)?;
+
+            let id = program.data.get_id()?;
+
+            fentry
+                .pin(format!("{RTDIR_FS}/prog_{}", id))
+                .map_err(BpfmanError::UnableToPinProgram)?;
+
+            Ok(id)
+        }
+        Program::Fexit(ref mut program) => {
+            let fn_name = program.get_fn_name()?;
+            let btf = Btf::from_sys_fs()?;
+            let fexit: &mut FExit = raw_program.try_into()?;
+            fexit
+                .load(&fn_name, &btf)
+                .map_err(BpfmanError::BpfProgramError)?;
+            program.get_data_mut().set_kernel_info(&fexit.info()?)?;
+
+            let id = program.data.get_id()?;
+
+            fexit
+                .pin(format!("{RTDIR_FS}/prog_{}", id))
+                .map_err(BpfmanError::UnableToPinProgram)?;
+
+            Ok(id)
+        }
+        Program::Tcx(ref mut program) => {
+            let tcx: &mut SchedClassifier = raw_program.try_into()?;
+
+            tcx.load()?;
+            program.get_data_mut().set_kernel_info(&tcx.info()?)?;
+
+            let id = program.data.get_id()?;
+
+            tcx.pin(format!("{RTDIR_FS}/prog_{}", id))
+                .map_err(BpfmanError::UnableToPinProgram)?;
+
+            Ok(id)
+        }
+        _ => panic!("not a supported single attach program"),
+    };
+
+    match res {
+        Ok(id) => {
+            // If this program is the map(s) owner pin all maps (except for .rodata and .bss) by name.
+            if p.get_data().get_map_pin_path()?.is_none() {
+                let map_pin_path = calc_map_pin_path(id);
+                p.get_data_mut().set_map_pin_path(&map_pin_path)?;
+                create_map_pin_path(&map_pin_path)?;
+
+                for (name, map) in loader.maps_mut() {
+                    if !should_map_be_pinned(name) {
+                        continue;
+                    }
+                    debug!(
+                        "Pinning map: {name} to path: {}",
+                        map_pin_path.join(name).display()
+                    );
+                    map.pin(map_pin_path.join(name))
+                        .map_err(BpfmanError::UnableToPinMap)?;
+                }
+            }
+        }
+        Err(_) => {
+            // If kernel ID was never set there's no pins to cleanup here so just continue
+            if p.get_data().get_id().is_ok() {
+                p.delete(root_db)
+                    .map_err(BpfmanError::BpfmanProgramDeleteError)?;
+            };
+        }
+    };
+
+    res
+}
+
+pub(crate) fn attach_single_attach_program(
+    root_db: &Db,
+    p: &mut Program,
+) -> Result<(), BpfmanError> {
+    debug!("BpfManager::attach_single_attach_program()");
+
+    match p {
+        Program::Tracepoint(ref mut program) => {
+            let tracepoint = program.get_tracepoint()?;
+            let parts: Vec<&str> = tracepoint.split('/').collect();
+            if parts.len() != 2 {
+                return Err(BpfmanError::InvalidAttach(
+                    program.get_tracepoint()?.to_string(),
+                ));
+            }
+            let category = parts[0].to_owned();
+            let name = parts[1].to_owned();
+            let id = program.data.get_id()?;
+
+            let mut tracepoint: TracePoint =
+                TracePoint::from_pin(format!("{RTDIR_FS}/prog_{}", id))?;
+
+            let link_id = tracepoint.attach(&category, &name)?;
+
+            let owned_link: TracePointLink = tracepoint.take_link(link_id)?;
+            let fd_link: FdLink = owned_link
+                .try_into()
+                .expect("unable to get owned tracepoint attach link");
+
+            // TODO: Add link metadata as this is important
+            // to ensure we get a unique link ID
+            let link_id = program.data.add_link(HashMap::new());
+
+            fd_link
+                .pin(format!("{RTDIR_FS_LINKS}/{}/{}", id, link_id))
+                .map_err(BpfmanError::UnableToPinLink)?;
+        }
+        Program::Kprobe(ref mut program) => {
+            let id = program.data.get_id()?;
+            let kind = match program.get_retprobe()? {
+                true => ProbeKind::KRetProbe,
+                false => ProbeKind::KProbe,
+            };
+
+            let mut kprobe: KProbe = KProbe::from_pin(format!("{RTDIR_FS}/prog_{}", id), kind)?;
+
+            let link_id = kprobe.attach(program.get_fn_name()?, program.get_offset()?)?;
+
+            let owned_link: KProbeLink = kprobe.take_link(link_id)?;
+            let fd_link: FdLink = owned_link
+                .try_into()
+                .expect("unable to get owned kprobe attach link");
+
+            fd_link
+                .pin(format!("{RTDIR_FS}/prog_{}_link", id))
+                .map_err(BpfmanError::UnableToPinLink)?;
+        }
+        Program::Uprobe(ref mut program) => {
+            let id = program.data.get_id()?;
+            let kind = match program.get_retprobe()? {
+                true => ProbeKind::URetProbe,
+                false => ProbeKind::UProbe,
+            };
+            let program_pin_path = format!("{RTDIR_FS}/prog_{}", id);
+
+            let mut uprobe: UProbe = UProbe::from_pin(&program_pin_path, kind)?;
+
             let fn_name = program.get_fn_name()?;
 
             uprobe
@@ -1333,62 +1541,33 @@ pub(crate) fn add_single_attach_program(root_db: &Db, p: &mut Program) -> Result
                     };
                 }
             };
-
-            Ok(id)
         }
         Program::Fentry(ref mut program) => {
-            let fn_name = program.get_fn_name()?;
-            let btf = Btf::from_sys_fs()?;
-            let fentry: &mut FEntry = raw_program.try_into()?;
-            fentry
-                .load(&fn_name, &btf)
-                .map_err(BpfmanError::BpfProgramError)?;
-            program.get_data_mut().set_kernel_info(&fentry.info()?)?;
-
             let id = program.data.get_id()?;
+            let mut fentry: FEntry = FEntry::from_pin(format!("{RTDIR_FS}/prog_{}", id))?;
+
             let link_id = fentry.attach()?;
             let owned_link: FEntryLink = fentry.take_link(link_id)?;
             let fd_link: FdLink = owned_link.into();
             fd_link
                 .pin(format!("{RTDIR_FS}/prog_{}_link", id))
                 .map_err(BpfmanError::UnableToPinLink)?;
-
-            fentry
-                .pin(format!("{RTDIR_FS}/prog_{}", id))
-                .map_err(BpfmanError::UnableToPinProgram)?;
-
-            Ok(id)
         }
         Program::Fexit(ref mut program) => {
-            let fn_name = program.get_fn_name()?;
-            let btf = Btf::from_sys_fs()?;
-            let fexit: &mut FExit = raw_program.try_into()?;
-            fexit
-                .load(&fn_name, &btf)
-                .map_err(BpfmanError::BpfProgramError)?;
-            program.get_data_mut().set_kernel_info(&fexit.info()?)?;
-
             let id = program.data.get_id()?;
+            let mut fexit: FExit = FExit::from_pin(format!("{RTDIR_FS}/prog_{}", id))?;
+
             let link_id = fexit.attach()?;
             let owned_link: FExitLink = fexit.take_link(link_id)?;
             let fd_link: FdLink = owned_link.into();
             fd_link
                 .pin(format!("{RTDIR_FS}/prog_{}_link", id))
                 .map_err(BpfmanError::UnableToPinLink)?;
-
-            fexit
-                .pin(format!("{RTDIR_FS}/prog_{}", id))
-                .map_err(BpfmanError::UnableToPinProgram)?;
-
-            Ok(id)
         }
         Program::Tcx(ref mut program) => {
-            let tcx: &mut SchedClassifier = raw_program.try_into()?;
-
-            tcx.load()?;
-            program.get_data_mut().set_kernel_info(&tcx.info()?)?;
-
             let id = program.data.get_id()?;
+            let mut tcx: SchedClassifier =
+                SchedClassifier::from_pin(format!("{RTDIR_FS}/prog_{}", id))?;
 
             let iface_string = program.get_iface()?;
             let iface = iface_string.as_str();
@@ -1417,46 +1596,22 @@ pub(crate) fn add_single_attach_program(root_db: &Db, p: &mut Program) -> Result
             fd_link
                 .pin(format!("{RTDIR_FS}/prog_{}_link", id))
                 .map_err(BpfmanError::UnableToPinLink)?;
-
-            tcx.pin(format!("{RTDIR_FS}/prog_{}", id))
-                .map_err(BpfmanError::UnableToPinProgram)?;
-
-            Ok(id)
         }
         _ => panic!("not a supported single attach program"),
     };
 
-    match res {
-        Ok(id) => {
-            // If this program is the map(s) owner pin all maps (except for .rodata and .bss) by name.
-            if p.get_data().get_map_pin_path()?.is_none() {
-                let map_pin_path = calc_map_pin_path(id);
-                p.get_data_mut().set_map_pin_path(&map_pin_path)?;
-                create_map_pin_path(&map_pin_path)?;
+    Ok(())
+}
 
-                for (name, map) in loader.maps_mut() {
-                    if !should_map_be_pinned(name) {
-                        continue;
-                    }
-                    debug!(
-                        "Pinning map: {name} to path: {}",
-                        map_pin_path.join(name).display()
-                    );
-                    map.pin(map_pin_path.join(name))
-                        .map_err(BpfmanError::UnableToPinMap)?;
-                }
-            }
-        }
-        Err(_) => {
-            // If kernel ID was never set there's no pins to cleanup here so just continue
-            if p.get_data().get_id().is_ok() {
-                p.delete(root_db)
-                    .map_err(BpfmanError::BpfmanProgramDeleteError)?;
-            };
-        }
-    };
+pub(crate) fn attach_multi_attach_program(
+    _root_db: &Db,
+    _p: &mut Program,
+) -> Result<(), BpfmanError> {
+    debug!("BpfManager::attach_multi_attach_program()");
 
-    res
+    todo!("implement this");
+
+    Ok(())
 }
 
 async fn remove_multi_attach_program(

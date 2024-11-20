@@ -53,11 +53,13 @@ impl XdpDispatcher {
         if_name: String,
         revision: u32,
     ) -> Result<Self, BpfmanError> {
+        let tree_name = if if_index == 0 && revision == 0 {
+            format!("{}_test", XDP_DISPATCHER_PREFIX)
+        } else {
+            format!("{}_{}_{}", XDP_DISPATCHER_PREFIX, if_index, revision)
+        };
         let db_tree = root_db
-            .open_tree(format!(
-                "{}_{}_{}",
-                XDP_DISPATCHER_PREFIX, if_index, revision
-            ))
+            .open_tree(tree_name)
             .expect("Unable to open xdp dispatcher database tree");
 
         let mut dp = Self {
@@ -159,17 +161,23 @@ impl XdpDispatcher {
             ));
         }
 
-        let path = format!("{RTDIR_FS_XDP}/dispatcher_{if_index}_{revision}");
+        let path = if if_index == 0 && revision == 0 {
+            RTDIR_FS_TEST_XDP_DISPATCHER.to_string()
+        } else {
+            format!("{RTDIR_FS_XDP}/dispatcher_{if_index}_{revision}")
+        };
         fs::create_dir_all(path).unwrap();
 
         self.loader = Some(loader);
         self.set_num_extensions(extensions.len())?;
         self.set_program_name(XDP_DISPATCHER_PROGRAM_NAME)?;
 
-        self.attach_extensions(&mut extensions)?;
-        self.attach()?;
-        if let Some(mut old) = old_dispatcher {
-            old.delete(root_db, false)?;
+        if if_index != 0 && revision != 0 {
+            self.attach_extensions(&mut extensions)?;
+            self.attach()?;
+            if let Some(mut old) = old_dispatcher {
+                old.delete(root_db, false)?;
+            }
         }
         Ok(())
     }

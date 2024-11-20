@@ -29,13 +29,15 @@ pub(crate) enum Commands {
     Load(LoadSubcommand),
     /// Unload an eBPF program using the Program Id.
     Unload(UnloadArgs),
+    /// Attach an eBPF program to a hook point using the Program Id.
+    Attach(AttachArgs),
     /// List all eBPF programs loaded via bpfman.
     List(ListArgs),
     /// Get an eBPF program using the Program Id.
     Get(GetArgs),
     /// eBPF Bytecode Image related commands.
     #[command(subcommand)]
-    Image(ImageSubCommand),
+    Image(Box<ImageSubCommand>),
 }
 
 #[derive(Subcommand, Debug)]
@@ -54,9 +56,10 @@ pub(crate) struct LoadFileArgs {
     #[clap(short, long, verbatim_doc_comment)]
     pub(crate) path: String,
 
-    /// Required: The name of the function that is the entry point for the BPF program.
-    #[clap(short, long)]
-    pub(crate) name: String,
+    /// Required: The program type and function name that is the entry point
+    /// for the eBPF program(s). Should be in the format <TYPE>:<NAME>.
+    #[clap(short, long, verbatim_doc_comment, num_args(1..), value_parser=parse_program_type)]
+    pub(crate) programs: Vec<(String, String)>,
 
     /// Optional: Global variables to be set when program is loaded.
     /// Format: <NAME>=<Hex Value>
@@ -82,9 +85,6 @@ pub(crate) struct LoadFileArgs {
     /// Example: --map-owner-id 63178
     #[clap(long, verbatim_doc_comment)]
     pub(crate) map_owner_id: Option<u32>,
-
-    #[clap(subcommand)]
-    pub(crate) command: LoadCommands,
 }
 
 #[derive(Args, Debug)]
@@ -93,9 +93,10 @@ pub(crate) struct LoadImageArgs {
     #[command(flatten)]
     pub(crate) pull_args: PullBytecodeArgs,
 
-    /// Required: The name of the function that is the entry point for the eBPF program.
-    #[clap(short, long, verbatim_doc_comment)]
-    pub(crate) name: String,
+    /// Required: The program type and function name that is the entry point
+    /// for the eBPF program(s). Should be in the format <TYPE>:<NAME>.
+    #[clap(short, long, verbatim_doc_comment, num_args(1..), value_parser=parse_program_type)]
+    pub(crate) programs: Vec<(String, String)>,
 
     /// Optional: Global variables to be set when program is loaded.
     /// Format: <NAME>=<Hex Value>
@@ -121,9 +122,6 @@ pub(crate) struct LoadImageArgs {
     /// Example: --map-owner-id 63178
     #[clap(long, verbatim_doc_comment)]
     pub(crate) map_owner_id: Option<u32>,
-
-    #[clap(subcommand)]
-    pub(crate) command: LoadCommands,
 }
 
 #[derive(Clone, Debug)]
@@ -134,7 +132,7 @@ pub(crate) struct GlobalArg {
 
 #[derive(Subcommand, Debug)]
 #[command(disable_version_flag = true)]
-pub(crate) enum LoadCommands {
+pub(crate) enum AttachCommands {
     #[command(disable_version_flag = true)]
     /// Install an eBPF program on the XDP hook point for a given interface.
     Xdp {
@@ -291,6 +289,16 @@ pub(crate) enum LoadCommands {
 pub(crate) struct UnloadArgs {
     /// Required: Program Id to be unloaded.
     pub(crate) program_id: u32,
+}
+
+#[derive(Args, Debug)]
+#[command(disable_version_flag = true)]
+pub(crate) struct AttachArgs {
+    /// Required: Program Id to be attached.
+    pub(crate) program_id: u32,
+
+    #[clap(subcommand)]
+    pub(crate) command: AttachCommands,
 }
 
 #[derive(Args, Debug)]
@@ -646,4 +654,13 @@ pub(crate) fn parse_global_arg(global_arg: &str) -> Result<GlobalArg, std::io::E
         name: name_str.to_string(),
         value,
     })
+}
+
+pub(crate) fn parse_program_type(program_type: &str) -> Result<(String, String), std::io::Error> {
+    let mut parts = program_type.split(':');
+
+    let type_str = parts.next().ok_or(std::io::ErrorKind::InvalidInput)?;
+    let name_str = parts.next().ok_or(std::io::ErrorKind::InvalidInput)?;
+
+    Ok((type_str.to_string(), name_str.to_string()))
 }

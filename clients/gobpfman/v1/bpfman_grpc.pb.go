@@ -24,6 +24,7 @@ const _ = grpc.SupportPackageIsVersion7
 type BpfmanClient interface {
 	Load(ctx context.Context, in *LoadRequest, opts ...grpc.CallOption) (*LoadResponse, error)
 	Unload(ctx context.Context, in *UnloadRequest, opts ...grpc.CallOption) (*UnloadResponse, error)
+	Attach(ctx context.Context, in *AttachRequest, opts ...grpc.CallOption) (*AttachResponse, error)
 	List(ctx context.Context, in *ListRequest, opts ...grpc.CallOption) (*ListResponse, error)
 	PullBytecode(ctx context.Context, in *PullBytecodeRequest, opts ...grpc.CallOption) (*PullBytecodeResponse, error)
 	Get(ctx context.Context, in *GetRequest, opts ...grpc.CallOption) (*GetResponse, error)
@@ -49,6 +50,15 @@ func (c *bpfmanClient) Load(ctx context.Context, in *LoadRequest, opts ...grpc.C
 func (c *bpfmanClient) Unload(ctx context.Context, in *UnloadRequest, opts ...grpc.CallOption) (*UnloadResponse, error) {
 	out := new(UnloadResponse)
 	err := c.cc.Invoke(ctx, "/bpfman.v1.Bpfman/Unload", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *bpfmanClient) Attach(ctx context.Context, in *AttachRequest, opts ...grpc.CallOption) (*AttachResponse, error) {
+	out := new(AttachResponse)
+	err := c.cc.Invoke(ctx, "/bpfman.v1.Bpfman/Attach", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -88,6 +98,7 @@ func (c *bpfmanClient) Get(ctx context.Context, in *GetRequest, opts ...grpc.Cal
 type BpfmanServer interface {
 	Load(context.Context, *LoadRequest) (*LoadResponse, error)
 	Unload(context.Context, *UnloadRequest) (*UnloadResponse, error)
+	Attach(context.Context, *AttachRequest) (*AttachResponse, error)
 	List(context.Context, *ListRequest) (*ListResponse, error)
 	PullBytecode(context.Context, *PullBytecodeRequest) (*PullBytecodeResponse, error)
 	Get(context.Context, *GetRequest) (*GetResponse, error)
@@ -103,6 +114,9 @@ func (UnimplementedBpfmanServer) Load(context.Context, *LoadRequest) (*LoadRespo
 }
 func (UnimplementedBpfmanServer) Unload(context.Context, *UnloadRequest) (*UnloadResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Unload not implemented")
+}
+func (UnimplementedBpfmanServer) Attach(context.Context, *AttachRequest) (*AttachResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Attach not implemented")
 }
 func (UnimplementedBpfmanServer) List(context.Context, *ListRequest) (*ListResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method List not implemented")
@@ -158,6 +172,24 @@ func _Bpfman_Unload_Handler(srv interface{}, ctx context.Context, dec func(inter
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(BpfmanServer).Unload(ctx, req.(*UnloadRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Bpfman_Attach_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AttachRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BpfmanServer).Attach(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/bpfman.v1.Bpfman/Attach",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BpfmanServer).Attach(ctx, req.(*AttachRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -230,6 +262,10 @@ var Bpfman_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Unload",
 			Handler:    _Bpfman_Unload_Handler,
+		},
+		{
+			MethodName: "Attach",
+			Handler:    _Bpfman_Attach_Handler,
 		},
 		{
 			MethodName: "List",

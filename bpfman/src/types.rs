@@ -30,7 +30,7 @@ use crate::{
     oci_utils::image_manager::ImageManager,
     utils::{
         bytes_to_bool, bytes_to_i32, bytes_to_string, bytes_to_u32, bytes_to_u64, bytes_to_usize,
-        sled_get, sled_get_option, sled_insert,
+        get_ifindex, sled_get, sled_get_option, sled_insert,
     },
 };
 
@@ -49,6 +49,8 @@ const MAP_OWNER_ID: &str = "map_owner_id";
 const MAP_PIN_PATH: &str = "map_pin_path";
 const PREFIX_GLOBAL_DATA: &str = "global_data_";
 const PREFIX_METADATA: &str = "metadata_";
+const LINK_IDS: &str = "link_ids";
+const PREFIX_LINKS: &str = "links_";
 const PREFIX_MAPS_USED_BY: &str = "maps_used_by_";
 const PROGRAM_BYTES: &str = "program_bytes";
 
@@ -279,6 +281,43 @@ pub enum Program {
     /// supported by bpfman. It contains the raw `ProgramData` for the
     /// unsupported program.
     Unsupported(ProgramData),
+}
+
+#[derive(Debug, Clone)]
+pub enum AttachInfo {
+    Xdp {
+        priority: i32,
+        iface: String,
+        proceed_on: XdpProceedOn,
+    },
+    Tc {
+        priority: i32,
+        iface: String,
+        direction: String,
+        proceed_on: TcProceedOn,
+    },
+    Tcx {
+        priority: i32,
+        iface: String,
+        direction: String,
+    },
+    Tracepoint {
+        tracepoint: String,
+    },
+    Kprobe {
+        fn_name: String,
+        offset: u64,
+        retprobe: bool,
+        container_pid: Option<i32>,
+    },
+    Uprobe {
+        fn_name: Option<String>,
+        offset: u64,
+        target: String,
+        retprobe: bool,
+        pid: Option<i32>,
+        container_pid: Option<i32>,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -683,6 +722,68 @@ impl ProgramData {
                 v.as_bytes(),
             )
         })
+    }
+
+    /// Retrieves the links of the program.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Result<HashMap<String, String>>, BpfmanError>`.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// - There is an issue fetching the links from the database.
+    pub fn get_links(&self) -> Result<(u64, HashMap<String, String>), BpfmanError> {
+        let metadata: HashMap<String, String> = self
+            .db_tree
+            .scan_prefix(PREFIX_METADATA)
+            .map(|n| {
+                n.map(|(k, v)| {
+                    (
+                        bytes_to_string(&k)
+                            .strip_prefix(PREFIX_METADATA)
+                            .unwrap()
+                            .to_string(),
+                        bytes_to_string(&v).to_string(),
+                    )
+                })
+            })
+            .map(|n| {
+                n.map_err(|e| {
+                    BpfmanError::DatabaseError("Failed to get metadata".to_string(), e.to_string())
+                })
+            })
+            .collect()?;
+        let id = sled_get(&self.db_tree, ID).map(bytes_to_u64)?;
+        Ok((id, metadata))
+    }
+
+    /// Adds a link to the program.
+    ///
+    /// # Arguments
+    ///
+    /// The metadata of the link in key/value format.
+    ///
+    /// # Returns
+    ///
+    /// The ID of the link.
+    pub fn add_link(&self, metadata: HashMap<String, String>) -> u64 {
+        let last_id = sled_get(&self.db_tree, LINK_IDS)
+            .map(bytes_to_u64)
+            .unwrap_or(0);
+
+        let id = last_id + 1;
+
+        metadata.iter().try_for_each(|(k, v)| {
+            sled_insert(
+                &self.db_tree,
+                format!("{PREFIX_LINKS}{id}_{k}").as_str(),
+                v.as_bytes(),
+            )
+        });
+
+        id
     }
 
     /// Retrieves the metadata of the program.
@@ -1170,24 +1271,27 @@ impl ProgramData {
 
 #[derive(Debug, Clone)]
 pub struct XdpProgram {
-    data: ProgramData,
+    pub(crate) data: ProgramData,
 }
 
 impl XdpProgram {
-    pub fn new(
-        data: ProgramData,
-        priority: i32,
-        iface: String,
-        proceed_on: XdpProceedOn,
-    ) -> Result<Self, BpfmanError> {
+    pub fn new(data: ProgramData) -> Result<Self, BpfmanError> {
         let mut xdp_prog = Self { data };
-
-        xdp_prog.set_priority(priority)?;
-        xdp_prog.set_iface(iface)?;
-        xdp_prog.set_proceed_on(proceed_on)?;
         xdp_prog.get_data_mut().set_kind(ProgramType::Xdp)?;
 
         Ok(xdp_prog)
+    }
+
+    pub fn attach(
+        &mut self,
+        priority: i32,
+        iface: String,
+        proceed_on: XdpProceedOn,
+    ) -> Result<(), BpfmanError> {
+        self.set_priority(priority)?;
+        self.set_iface(iface)?;
+        self.set_proceed_on(proceed_on)?;
+        Ok(())
     }
 
     pub(crate) fn set_priority(&mut self, priority: i32) -> Result<(), BpfmanError> {
@@ -1284,22 +1388,25 @@ pub struct TcProgram {
 }
 
 impl TcProgram {
-    pub fn new(
-        data: ProgramData,
+    pub fn new(data: ProgramData) -> Result<Self, BpfmanError> {
+        let mut tc_prog = Self { data };
+        tc_prog.get_data_mut().set_kind(ProgramType::Tc)?;
+
+        Ok(tc_prog)
+    }
+
+    pub fn attach(
+        &mut self,
         priority: i32,
         iface: String,
         proceed_on: TcProceedOn,
         direction: Direction,
-    ) -> Result<Self, BpfmanError> {
-        let mut tc_prog = Self { data };
-
-        tc_prog.set_priority(priority)?;
-        tc_prog.set_iface(iface)?;
-        tc_prog.set_proceed_on(proceed_on)?;
-        tc_prog.set_direction(direction)?;
-        tc_prog.get_data_mut().set_kind(ProgramType::Tc)?;
-
-        Ok(tc_prog)
+    ) -> Result<(), BpfmanError> {
+        self.set_priority(priority)?;
+        self.set_iface(iface)?;
+        self.set_proceed_on(proceed_on)?;
+        self.set_direction(direction)?;
+        Ok(())
     }
 
     pub(crate) fn set_priority(&mut self, priority: i32) -> Result<(), BpfmanError> {
@@ -1427,20 +1534,23 @@ pub struct TcxProgram {
 }
 
 impl TcxProgram {
-    pub fn new(
-        data: ProgramData,
-        priority: i32,
-        iface: String,
-        direction: Direction,
-    ) -> Result<Self, BpfmanError> {
+    pub fn new(data: ProgramData) -> Result<Self, BpfmanError> {
         let mut tcx_prog = Self { data };
-
-        tcx_prog.set_priority(priority)?;
-        tcx_prog.set_iface(iface)?;
-        tcx_prog.set_direction(direction)?;
         tcx_prog.get_data_mut().set_kind(ProgramType::Tc)?;
 
         Ok(tcx_prog)
+    }
+
+    pub fn attach(
+        &mut self,
+        priority: i32,
+        iface: String,
+        direction: Direction,
+    ) -> Result<(), BpfmanError> {
+        self.set_priority(priority)?;
+        self.set_iface(iface)?;
+        self.set_direction(direction)?;
+        Ok(())
     }
 
     pub(crate) fn set_priority(&mut self, priority: i32) -> Result<(), BpfmanError> {
@@ -1507,12 +1617,16 @@ pub struct TracepointProgram {
 }
 
 impl TracepointProgram {
-    pub fn new(data: ProgramData, tracepoint: String) -> Result<Self, BpfmanError> {
+    pub fn new(data: ProgramData) -> Result<Self, BpfmanError> {
         let mut tp_prog = Self { data };
-        tp_prog.set_tracepoint(tracepoint)?;
         tp_prog.get_data_mut().set_kind(ProgramType::Tracepoint)?;
 
         Ok(tp_prog)
+    }
+
+    pub fn attach(&mut self, tracepoint: String) -> Result<(), BpfmanError> {
+        self.set_tracepoint(tracepoint)?;
+        Ok(())
     }
 
     pub(crate) fn set_tracepoint(&mut self, tracepoint: String) -> Result<(), BpfmanError> {
@@ -1538,22 +1652,27 @@ pub struct KprobeProgram {
 }
 
 impl KprobeProgram {
-    pub fn new(
-        data: ProgramData,
+    pub fn new(data: ProgramData) -> Result<Self, BpfmanError> {
+        let mut kprobe_prog = Self { data };
+        kprobe_prog.get_data_mut().set_kind(ProgramType::Probe)?;
+        Ok(kprobe_prog)
+    }
+
+    pub fn attach(
+        &mut self,
         fn_name: String,
         offset: u64,
         retprobe: bool,
         container_pid: Option<i32>,
-    ) -> Result<Self, BpfmanError> {
-        let mut kprobe_prog = Self { data };
-        kprobe_prog.set_fn_name(fn_name)?;
-        kprobe_prog.set_offset(offset)?;
-        kprobe_prog.set_retprobe(retprobe)?;
-        kprobe_prog.get_data_mut().set_kind(ProgramType::Probe)?;
-        if container_pid.is_some() {
-            kprobe_prog.set_container_pid(container_pid.unwrap())?;
+    ) -> Result<(), BpfmanError> {
+        self.set_fn_name(fn_name)?;
+        self.set_offset(offset)?;
+        self.set_retprobe(retprobe)?;
+
+        if let Some(p) = container_pid {
+            self.set_container_pid(p)?;
         }
-        Ok(kprobe_prog)
+        Ok(())
     }
 
     pub(crate) fn set_fn_name(&mut self, fn_name: String) -> Result<(), BpfmanError> {
@@ -1613,32 +1732,34 @@ pub struct UprobeProgram {
 }
 
 impl UprobeProgram {
-    pub fn new(
-        data: ProgramData,
-        fn_name: Option<String>,
-        offset: u64,
-        target: String,
-        retprobe: bool,
-        pid: Option<i32>,
-        container_pid: Option<i32>,
-    ) -> Result<Self, BpfmanError> {
+    pub fn new(data: ProgramData) -> Result<Self, BpfmanError> {
         let mut uprobe_prog = Self { data };
-
-        if fn_name.is_some() {
-            uprobe_prog.set_fn_name(fn_name.unwrap())?;
-        }
-
-        uprobe_prog.set_offset(offset)?;
-        uprobe_prog.set_retprobe(retprobe)?;
-        if let Some(p) = container_pid {
-            uprobe_prog.set_container_pid(p)?;
-        }
-        if let Some(p) = pid {
-            uprobe_prog.set_pid(p)?;
-        }
-        uprobe_prog.set_target(target)?;
         uprobe_prog.get_data_mut().set_kind(ProgramType::Probe)?;
         Ok(uprobe_prog)
+    }
+
+    pub fn attach(
+        &mut self,
+        fn_name: Option<String>,
+        offset: u64,
+        retprobe: bool,
+        container_pid: Option<i32>,
+        pid: Option<i32>,
+        target: String,
+    ) -> Result<(), BpfmanError> {
+        if let Some(f) = fn_name {
+            self.set_fn_name(f)?;
+        }
+        self.set_offset(offset)?;
+        self.set_retprobe(retprobe)?;
+        if let Some(p) = container_pid {
+            self.set_container_pid(p)?;
+        }
+        if let Some(p) = pid {
+            self.set_pid(p)?;
+        }
+        self.set_target(target)?;
+        Ok(())
     }
 
     pub(crate) fn set_fn_name(&mut self, fn_name: String) -> Result<(), BpfmanError> {
@@ -1840,6 +1961,95 @@ impl Program {
                 "cannot set position on programs other than TC or XDP".to_string(),
             )),
         }
+    }
+
+    pub(crate) fn attach(&mut self, info: Option<&AttachInfo>) -> Result<(), BpfmanError> {
+        match info {
+            Some(AttachInfo::Tcx {
+                priority,
+                iface,
+                direction,
+            }) => {
+                self.set_if_index(get_ifindex(iface)?)?;
+                if let Program::Tcx(ref mut t) = self {
+                    t.attach(*priority, iface.clone(), direction.clone().try_into()?)?;
+                } else {
+                    panic!("Program is not a Tcx program");
+                }
+            }
+            Some(AttachInfo::Xdp {
+                iface,
+                priority,
+                proceed_on,
+            }) => {
+                self.set_if_index(get_ifindex(iface)?)?;
+                if let Program::Xdp(ref mut x) = self {
+                    x.attach(*priority, iface.clone(), proceed_on.clone())?;
+                } else {
+                    panic!("Program is not an Xdp program");
+                }
+            }
+            Some(AttachInfo::Tc {
+                iface,
+                priority,
+                proceed_on,
+                direction,
+            }) => {
+                self.set_if_index(get_ifindex(iface)?)?;
+                if let Program::Tc(ref mut t) = self {
+                    t.attach(
+                        *priority,
+                        iface.clone(),
+                        proceed_on.clone(),
+                        direction.clone().try_into()?,
+                    )?;
+                } else {
+                    panic!("Program is not a Tc program");
+                }
+            }
+            Some(AttachInfo::Tracepoint { tracepoint }) => {
+                if let Program::Tracepoint(ref mut t) = self {
+                    t.attach(tracepoint.clone())?;
+                } else {
+                    panic!("Program is not a Tracepoint program");
+                }
+            }
+            Some(AttachInfo::Kprobe {
+                fn_name,
+                offset,
+                retprobe,
+                container_pid,
+            }) => {
+                if let Program::Kprobe(ref mut k) = self {
+                    k.attach(fn_name.clone(), *offset, *retprobe, *container_pid)?;
+                } else {
+                    panic!("Program is not a Kprobe program");
+                }
+            }
+            Some(AttachInfo::Uprobe {
+                fn_name,
+                offset,
+                target,
+                retprobe,
+                pid,
+                container_pid,
+            }) => {
+                if let Program::Uprobe(ref mut u) = self {
+                    u.attach(
+                        fn_name.clone(),
+                        *offset,
+                        *retprobe,
+                        *container_pid,
+                        *pid,
+                        target.clone(),
+                    )?;
+                } else {
+                    panic!("Program is not a Uprobe program");
+                }
+            }
+            None => (),
+        }
+        Ok(())
     }
 
     pub(crate) fn delete(&self, root_db: &Db) -> Result<(), anyhow::Error> {

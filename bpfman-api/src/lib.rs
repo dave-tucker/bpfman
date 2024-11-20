@@ -8,10 +8,9 @@ use bpfman::{
 
 use crate::v1::{
     attach_info::Info, bytecode_location::Location as V1Location, AttachInfo,
-    BytecodeImage as V1BytecodeImage, BytecodeLocation, FentryAttachInfo, FexitAttachInfo,
-    KernelProgramInfo as V1KernelProgramInfo, KprobeAttachInfo, ProgramInfo,
-    ProgramInfo as V1ProgramInfo, TcAttachInfo, TcxAttachInfo, TracepointAttachInfo,
-    UprobeAttachInfo, XdpAttachInfo,
+    BytecodeImage as V1BytecodeImage, BytecodeLocation, KernelProgramInfo as V1KernelProgramInfo,
+    KprobeAttachInfo, ProgramInfo, ProgramInfo as V1ProgramInfo, TcAttachInfo, TcxAttachInfo,
+    TracepointAttachInfo, UprobeAttachInfo, XdpAttachInfo,
 };
 
 #[path = "bpfman.v1.rs"]
@@ -80,12 +79,8 @@ impl TryFrom<&Program> for ProgramInfo {
                     pid: p.get_pid()?,
                     container_pid: p.get_container_pid()?,
                 })),
-                Program::Fentry(p) => Some(Info::FentryAttachInfo(FentryAttachInfo {
-                    fn_name: p.get_fn_name()?.to_string(),
-                })),
-                Program::Fexit(p) => Some(Info::FexitAttachInfo(FexitAttachInfo {
-                    fn_name: p.get_fn_name()?.to_string(),
-                })),
+                Program::Fentry(_) => None,
+                Program::Fexit(_) => None,
                 Program::Unsupported(_) => None,
             },
         };
@@ -94,7 +89,7 @@ impl TryFrom<&Program> for ProgramInfo {
         Ok(V1ProgramInfo {
             name: data.get_name()?.to_string(),
             bytecode,
-            attach: Some(attach_info),
+            attach: vec![attach_info],
             global_data: data.get_global_data()?,
             map_owner_id: data.get_map_owner_id()?,
             map_pin_path: data

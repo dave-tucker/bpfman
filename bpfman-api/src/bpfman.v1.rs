@@ -71,8 +71,8 @@ pub struct ProgramInfo {
     pub name: ::prost::alloc::string::String,
     #[prost(message, optional, tag = "2")]
     pub bytecode: ::core::option::Option<BytecodeLocation>,
-    #[prost(message, optional, tag = "3")]
-    pub attach: ::core::option::Option<AttachInfo>,
+    #[prost(message, repeated, tag = "3")]
+    pub attach: ::prost::alloc::vec::Vec<AttachInfo>,
     #[prost(map = "string, bytes", tag = "4")]
     pub global_data: ::std::collections::HashMap<
         ::prost::alloc::string::String,
@@ -164,20 +164,8 @@ pub struct UprobeAttachInfo {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct FentryAttachInfo {
-    #[prost(string, tag = "1")]
-    pub fn_name: ::prost::alloc::string::String,
-}
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct FexitAttachInfo {
-    #[prost(string, tag = "1")]
-    pub fn_name: ::prost::alloc::string::String,
-}
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct AttachInfo {
-    #[prost(oneof = "attach_info::Info", tags = "2, 3, 4, 5, 6, 7, 8, 9")]
+    #[prost(oneof = "attach_info::Info", tags = "1, 2, 3, 4, 5, 6")]
     pub info: ::core::option::Option<attach_info::Info>,
 }
 /// Nested message and enum types in `AttachInfo`.
@@ -185,35 +173,26 @@ pub mod attach_info {
     #[allow(clippy::derive_partial_eq_without_eq)]
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Info {
-        #[prost(message, tag = "2")]
+        #[prost(message, tag = "1")]
         XdpAttachInfo(super::XdpAttachInfo),
-        #[prost(message, tag = "3")]
+        #[prost(message, tag = "2")]
         TcAttachInfo(super::TcAttachInfo),
-        #[prost(message, tag = "4")]
+        #[prost(message, tag = "3")]
         TracepointAttachInfo(super::TracepointAttachInfo),
-        #[prost(message, tag = "5")]
+        #[prost(message, tag = "4")]
         KprobeAttachInfo(super::KprobeAttachInfo),
-        #[prost(message, tag = "6")]
+        #[prost(message, tag = "5")]
         UprobeAttachInfo(super::UprobeAttachInfo),
-        #[prost(message, tag = "7")]
-        FentryAttachInfo(super::FentryAttachInfo),
-        #[prost(message, tag = "8")]
-        FexitAttachInfo(super::FexitAttachInfo),
-        #[prost(message, tag = "9")]
+        #[prost(message, tag = "6")]
         TcxAttachInfo(super::TcxAttachInfo),
     }
 }
+/// LoadRequest represents a request to load and attach a bpf program.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct LoadRequest {
     #[prost(message, optional, tag = "1")]
     pub bytecode: ::core::option::Option<BytecodeLocation>,
-    #[prost(string, tag = "2")]
-    pub name: ::prost::alloc::string::String,
-    #[prost(uint32, tag = "3")]
-    pub program_type: u32,
-    #[prost(message, optional, tag = "4")]
-    pub attach: ::core::option::Option<AttachInfo>,
     #[prost(map = "string, string", tag = "5")]
     pub metadata: ::std::collections::HashMap<
         ::prost::alloc::string::String,
@@ -228,24 +207,97 @@ pub struct LoadRequest {
     pub uuid: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(uint32, optional, tag = "8")]
     pub map_owner_id: ::core::option::Option<u32>,
+    #[prost(message, repeated, tag = "9")]
+    pub info: ::prost::alloc::vec::Vec<LoadInfo>,
 }
+/// LoadInfo contains per-program information for LoadRequest.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct LoadResponse {
+pub struct LoadInfo {
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(enumeration = "BpfmanProgramType", tag = "2")]
+    pub program_type: i32,
+    #[prost(message, optional, tag = "3")]
+    pub info: ::core::option::Option<ProgSpecificInfo>,
+}
+/// FentryLoadInfo contains the program-specific load information for LoadInfo.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FentryLoadInfo {
+    #[prost(string, tag = "1")]
+    pub fn_name: ::prost::alloc::string::String,
+}
+/// FexitLoadInfo contains the program-specific load information for LoadInfo.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FexitLoadInfo {
+    #[prost(string, tag = "1")]
+    pub fn_name: ::prost::alloc::string::String,
+}
+/// ProgSpecificInfo contains the program-specific load information for LoadInfo.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ProgSpecificInfo {
+    #[prost(oneof = "prog_specific_info::Info", tags = "1, 2")]
+    pub info: ::core::option::Option<prog_specific_info::Info>,
+}
+/// Nested message and enum types in `ProgSpecificInfo`.
+pub mod prog_specific_info {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Info {
+        #[prost(message, tag = "1")]
+        FentryLoadInfo(super::FentryLoadInfo),
+        #[prost(message, tag = "2")]
+        FexitLoadInfo(super::FexitLoadInfo),
+    }
+}
+/// LoadResponseInfo represents the state for a single eBPF program that is maintained
+/// internally by bpfman.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct LoadResponseInfo {
     #[prost(message, optional, tag = "1")]
     pub info: ::core::option::Option<ProgramInfo>,
     #[prost(message, optional, tag = "2")]
     pub kernel_info: ::core::option::Option<KernelProgramInfo>,
 }
+/// LoadResponse represents a response from loading and attaching an eBPF program.
+/// It includes all of the state kept by bpfman and the Linux kernel for the
+/// program.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct LoadResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub programs: ::prost::alloc::vec::Vec<LoadResponseInfo>,
+}
+/// UnloadRequest represents a request to unload an eBPF program that was loaded
+/// and attached by bpfman. To identify a program pass in a valid kernel ID.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct UnloadRequest {
     #[prost(uint32, tag = "1")]
     pub id: u32,
 }
+/// UnloadResponse represents a response from unloading an eBPF program.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct UnloadResponse {}
+/// AttachRequest represents a request to attach an eBPF program that was loaded
+/// by bpfman. To identify a program pass in a valid kernel ID.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AttachRequest {
+    #[prost(uint32, tag = "1")]
+    pub id: u32,
+    #[prost(message, optional, tag = "2")]
+    pub attach: ::core::option::Option<AttachInfo>,
+}
+/// AttachResponse represents a response from attaching an eBPF program.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AttachResponse {}
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ListRequest {
@@ -298,6 +350,50 @@ pub struct GetResponse {
     pub info: ::core::option::Option<ProgramInfo>,
     #[prost(message, optional, tag = "2")]
     pub kernel_info: ::core::option::Option<KernelProgramInfo>,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum BpfmanProgramType {
+    Xdp = 0,
+    Tc = 1,
+    Tracepoint = 2,
+    Kprobe = 3,
+    Uprobe = 4,
+    Fentry = 5,
+    Fexit = 6,
+    Tcx = 7,
+}
+impl BpfmanProgramType {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            BpfmanProgramType::Xdp => "XDP",
+            BpfmanProgramType::Tc => "TC",
+            BpfmanProgramType::Tracepoint => "TRACEPOINT",
+            BpfmanProgramType::Kprobe => "KPROBE",
+            BpfmanProgramType::Uprobe => "UPROBE",
+            BpfmanProgramType::Fentry => "FENTRY",
+            BpfmanProgramType::Fexit => "FEXIT",
+            BpfmanProgramType::Tcx => "TCX",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "XDP" => Some(Self::Xdp),
+            "TC" => Some(Self::Tc),
+            "TRACEPOINT" => Some(Self::Tracepoint),
+            "KPROBE" => Some(Self::Kprobe),
+            "UPROBE" => Some(Self::Uprobe),
+            "FENTRY" => Some(Self::Fentry),
+            "FEXIT" => Some(Self::Fexit),
+            "TCX" => Some(Self::Tcx),
+            _ => None,
+        }
+    }
 }
 /// Generated client implementations.
 pub mod bpfman_client {
@@ -411,6 +507,25 @@ pub mod bpfman_client {
             req.extensions_mut().insert(GrpcMethod::new("bpfman.v1.Bpfman", "Unload"));
             self.inner.unary(req, path, codec).await
         }
+        pub async fn attach(
+            &mut self,
+            request: impl tonic::IntoRequest<super::AttachRequest>,
+        ) -> std::result::Result<tonic::Response<super::AttachResponse>, tonic::Status> {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static("/bpfman.v1.Bpfman/Attach");
+            let mut req = request.into_request();
+            req.extensions_mut().insert(GrpcMethod::new("bpfman.v1.Bpfman", "Attach"));
+            self.inner.unary(req, path, codec).await
+        }
         pub async fn list(
             &mut self,
             request: impl tonic::IntoRequest<super::ListRequest>,
@@ -491,6 +606,10 @@ pub mod bpfman_server {
             &self,
             request: tonic::Request<super::UnloadRequest>,
         ) -> std::result::Result<tonic::Response<super::UnloadResponse>, tonic::Status>;
+        async fn attach(
+            &self,
+            request: tonic::Request<super::AttachRequest>,
+        ) -> std::result::Result<tonic::Response<super::AttachResponse>, tonic::Status>;
         async fn list(
             &self,
             request: tonic::Request<super::ListRequest>,
@@ -659,6 +778,50 @@ pub mod bpfman_server {
                     let fut = async move {
                         let inner = inner.0;
                         let method = UnloadSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/bpfman.v1.Bpfman/Attach" => {
+                    #[allow(non_camel_case_types)]
+                    struct AttachSvc<T: Bpfman>(pub Arc<T>);
+                    impl<T: Bpfman> tonic::server::UnaryService<super::AttachRequest>
+                    for AttachSvc<T> {
+                        type Response = super::AttachResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::AttachRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as Bpfman>::attach(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let inner = inner.0;
+                        let method = AttachSvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(

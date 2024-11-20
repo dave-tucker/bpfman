@@ -27,6 +27,44 @@ pub(crate) enum Dispatcher {
 }
 
 impl Dispatcher {
+    pub async fn init(
+        root_db: &Db,
+        kind: ProgramType,
+        registry_config: &RegistryConfig,
+        image_manager: &mut ImageManager,
+    ) -> Result<Dispatcher, BpfmanError> {
+        debug!("Dispatcher::new()");
+        let d = match kind {
+            ProgramType::Xdp => {
+                let mut x = XdpDispatcher::new(root_db, &XdpMode::Skb, 0, "test".to_string(), 0)?;
+
+                if let Err(res) = x
+                    .load(root_db, &mut [], None, image_manager, registry_config)
+                    .await
+                {
+                    let _ = x.delete(root_db, true);
+                    return Err(res);
+                }
+                Dispatcher::Xdp(x)
+            }
+            ProgramType::Tc => {
+                let mut t =
+                    TcDispatcher::new(root_db, Direction::Ingress, 0, "test".to_string(), 0)?;
+
+                if let Err(res) = t
+                    .load(root_db, &mut [], None, image_manager, registry_config)
+                    .await
+                {
+                    let _ = t.delete(root_db, true);
+                    return Err(res);
+                }
+                Dispatcher::Tc(t)
+            }
+            _ => return Err(BpfmanError::DispatcherNotRequired),
+        };
+        Ok(d)
+    }
+
     pub async fn new(
         root_db: &Db,
         if_config: Option<&InterfaceConfig>,

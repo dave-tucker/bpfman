@@ -275,10 +275,6 @@ pub(crate) fn initialize_bpfman() -> anyhow::Result<()> {
     // Create directories associated with bpfman
     create_dir_all(RTDIR).context("unable to create runtime directory")?;
     create_dir_all(RTDIR_FS).context("unable to create mountpoint")?;
-    create_dir_all(RTDIR_TC_INGRESS_DISPATCHER).context("unable to create dispatcher directory")?;
-    create_dir_all(RTDIR_TC_EGRESS_DISPATCHER).context("unable to create dispatcher directory")?;
-    create_dir_all(RTDIR_XDP_DISPATCHER).context("unable to create dispatcher directory")?;
-    create_dir_all(RTDIR_PROGRAMS).context("unable to create programs directory")?;
 
     if !is_bpffs_mounted()? {
         create_bpffs(RTDIR_FS)?;
@@ -288,6 +284,8 @@ pub(crate) fn initialize_bpfman() -> anyhow::Result<()> {
         .context("unable to create tc ingress dispatcher directory")?;
     create_dir_all(RTDIR_FS_TC_EGRESS)
         .context("unable to create tc egress dispatcher directory")?;
+    create_dir_all(RTDIR_FS_DISPATCHER_TEST)
+        .context("unable to create dispatcher test directory")?;
     create_dir_all(RTDIR_FS_MAPS).context("unable to create maps directory")?;
     create_dir_all(RTDIR_TUF).context("unable to create TUF directory")?;
 

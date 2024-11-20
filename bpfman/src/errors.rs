@@ -81,6 +81,8 @@ pub enum BpfmanError {
     BpfLinkError(#[from] aya::programs::links::LinkError),
     #[error(transparent)]
     BpfParseError(#[from] ParseError),
+    #[error("one or more programs failed to load: {0:?}")]
+    ProgramsLoadFailure(Vec<BpfmanError>),
 }
 
 #[derive(Error, Debug)]
