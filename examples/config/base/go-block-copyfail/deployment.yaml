@@ -1,0 +1,68 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: go-block-copyfail
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: bpfman-app-go-block-copyfail
+  namespace: go-block-copyfail
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: go-block-copyfail-ds
+  namespace: go-block-copyfail
+  labels:
+    k8s-app: go-block-copyfail
+spec:
+  selector:
+    matchLabels:
+      name: go-block-copyfail
+  template:
+    metadata:
+      labels:
+        name: go-block-copyfail
+    spec:
+      nodeSelector: {}
+      dnsPolicy: ClusterFirstWithHostNet
+      serviceAccountName: bpfman-app-go-block-copyfail
+      securityContext:
+        runAsNonRoot: true
+        fsGroup: 65534
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: go-block-copyfail
+          image: quay.io/bpfman-userspace/go-block-copyfail:latest
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+            runAsUser: 65534
+            runAsGroup: 65534
+          env:
+            - name: NODENAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - name: go-block-copyfail-maps
+              mountPath: /run/block-copyfail/maps
+              # Not read-only: the userspace process writes the init net
+              # namespace inode into the init_net_ns map on startup.
+      volumes:
+        - name: go-block-copyfail-maps
+          csi:
+            driver: csi.bpfman.io
+            volumeAttributes:
+              csi.bpfman.io/program: go-block-copyfail
+              csi.bpfman.io/maps: events,init_net_ns

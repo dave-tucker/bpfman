@@ -195,6 +195,23 @@ impl ProgTable {
 
                 Self::add_metadata(self, fexit_link.get_metadata());
             }
+            Link::Lsm(lsm_link) => {
+                match program {
+                    Program::Lsm(lsm_program) => {
+                        Self::add_string(
+                            self,
+                            "Hook Name:".to_string(),
+                            lsm_program.get_hook_name(),
+                        );
+                    }
+                    _ => {
+                        warn!("lsm program type and link type mismatch");
+                        self.0.add_row(vec!["Hook Name:", "None"]);
+                    }
+                };
+
+                Self::add_metadata(self, lsm_link.get_metadata());
+            }
             Link::Kprobe(kprobe_link) => {
                 Self::add_string(
                     self,
@@ -598,6 +615,13 @@ impl ProgTable {
             Link::Fexit(_fexit_link) => match program {
                 Program::Fexit(fexit_program) => match fexit_program.get_fn_name() {
                     Ok(fn_name) => fn_name,
+                    Err(_) => "unknown".to_string(),
+                },
+                _ => "unknown".to_string(),
+            },
+            Link::Lsm(_lsm_link) => match program {
+                Program::Lsm(lsm_program) => match lsm_program.get_hook_name() {
+                    Ok(hook_name) => hook_name,
                     Err(_) => "unknown".to_string(),
                 },
                 _ => "unknown".to_string(),

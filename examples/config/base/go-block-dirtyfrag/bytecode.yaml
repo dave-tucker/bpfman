@@ -1,0 +1,46 @@
+apiVersion: bpfman.io/v1alpha1
+kind: ClusterBpfApplication
+metadata:
+  labels:
+    app.kubernetes.io/name: go-block-dirtyfrag
+  name: go-block-dirtyfrag
+spec:
+  # Deploy on every node in the cluster.
+  nodeSelector: {}
+  byteCode:
+    image:
+      url: quay.io/bpfman-bytecode/go-block-dirtyfrag:latest
+      imagePullPolicy: IfNotPresent
+  programs:
+    # Layer 1: block AF_RXRPC socket creation (rxrpc/rxkad page-cache write path)
+    - name: block_rxrpc
+      type: LSM
+      lsm:
+        hook: socket_create
+        links:
+          - mode: Attach
+
+    # Layer 2: block MSG_SPLICE_PAGES on UDP sockets (kernel 6.4+)
+    - name: block_udp_splice
+      type: LSM
+      lsm:
+        hook: socket_sendmsg
+        links:
+          - mode: Attach
+
+    # Layer 3 (tracepoint half): reads optval from userspace before the LSM
+    # hook fires to identify "espintcp" while preserving kTLS ("tls").
+    - name: tp_setsockopt
+      type: TracePoint
+      tracepoint:
+        links:
+          - name: syscalls/sys_enter_setsockopt
+
+    # Layers 3 & 4 (LSM half): blocks TCP_ULP espintcp globally and
+    # UDP_ENCAP setsockopt from non-init net namespaces.
+    - name: block_setsockopt
+      type: LSM
+      lsm:
+        hook: socket_setsockopt
+        links:
+          - mode: Attach

@@ -1,0 +1,21 @@
+# Builds the bytecode OCI image referenced by byteCode.image.url in the
+# ClusterBpfApplication.  bpfman pulls this image on each node and loads
+# the compiled BPF object directly into the kernel via the operator.
+#
+# Build and push:
+#   podman build -f Containerfile.bytecode -t quay.io/bpfman-bytecode/go-block-copyfail:latest ../..
+#   podman push quay.io/bpfman-bytecode/go-block-copyfail:latest
+
+FROM fedora:latest AS bpf-build
+
+RUN dnf install -y clang bpftool libbpf-devel kernel-headers make
+
+WORKDIR /build
+COPY examples/go-block-copyfail/bpf/ ./bpf/
+
+RUN clang -O2 -g -Wall -target bpf \
+    -I/usr/include/bpf -I/usr/include/linux \
+    -c bpf/mitigations.bpf.c -o bpf_bpfel.o
+
+FROM scratch
+COPY --from=bpf-build /build/bpf_bpfel.o /bpf_bpfel.o

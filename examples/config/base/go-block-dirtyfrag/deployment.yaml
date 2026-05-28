@@ -1,0 +1,68 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: go-block-dirtyfrag
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: bpfman-app-go-block-dirtyfrag
+  namespace: go-block-dirtyfrag
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: go-block-dirtyfrag-ds
+  namespace: go-block-dirtyfrag
+  labels:
+    k8s-app: go-block-dirtyfrag
+spec:
+  selector:
+    matchLabels:
+      name: go-block-dirtyfrag
+  template:
+    metadata:
+      labels:
+        name: go-block-dirtyfrag
+    spec:
+      nodeSelector: {}
+      dnsPolicy: ClusterFirstWithHostNet
+      serviceAccountName: bpfman-app-go-block-dirtyfrag
+      securityContext:
+        runAsNonRoot: true
+        fsGroup: 65534
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: go-block-dirtyfrag
+          image: quay.io/bpfman-userspace/go-block-dirtyfrag:latest
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+            runAsUser: 65534
+            runAsGroup: 65534
+          env:
+            - name: NODENAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - name: go-block-dirtyfrag-maps
+              mountPath: /run/block-dirtyfrag/maps
+              # Not read-only: the userspace process writes the init net
+              # namespace inode into the init_net_ns map on startup.
+      volumes:
+        - name: go-block-dirtyfrag-maps
+          csi:
+            driver: csi.bpfman.io
+            volumeAttributes:
+              csi.bpfman.io/program: go-block-dirtyfrag
+              csi.bpfman.io/maps: events,init_net_ns

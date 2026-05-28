@@ -1,0 +1,7 @@
+go-block-copyfail
+bpf_bpfel.go
+bpf_bpfeb.go
+bpf_x86_bpfel.o
+bpf_arm64_bpfel.o
+bpf_ppc64le_bpfel.o
+bpf_s390x_bpfeb.o

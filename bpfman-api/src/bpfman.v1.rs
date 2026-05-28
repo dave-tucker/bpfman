@@ -74,8 +74,10 @@ pub struct ProgramInfo {
     #[prost(uint32, repeated, tag = "3")]
     pub links: ::prost::alloc::vec::Vec<u32>,
     #[prost(map = "string, bytes", tag = "4")]
-    pub global_data:
-        ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::vec::Vec<u8>>,
+    pub global_data: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        ::prost::alloc::vec::Vec<u8>,
+    >,
     #[prost(uint32, optional, tag = "5")]
     pub map_owner_id: ::core::option::Option<u32>,
     #[prost(string, tag = "6")]
@@ -83,8 +85,10 @@ pub struct ProgramInfo {
     #[prost(string, repeated, tag = "7")]
     pub map_used_by: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
     #[prost(map = "string, string", tag = "8")]
-    pub metadata:
-        ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
+    pub metadata: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        ::prost::alloc::string::String,
+    >,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -100,8 +104,10 @@ pub struct XdpAttachInfo {
     #[prost(string, optional, tag = "5")]
     pub netns: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(map = "string, string", tag = "6")]
-    pub metadata:
-        ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
+    pub metadata: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        ::prost::alloc::string::String,
+    >,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -119,8 +125,10 @@ pub struct TcAttachInfo {
     #[prost(string, optional, tag = "6")]
     pub netns: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(map = "string, string", tag = "7")]
-    pub metadata:
-        ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
+    pub metadata: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        ::prost::alloc::string::String,
+    >,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -136,8 +144,10 @@ pub struct TcxAttachInfo {
     #[prost(string, optional, tag = "5")]
     pub netns: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(map = "string, string", tag = "6")]
-    pub metadata:
-        ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
+    pub metadata: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        ::prost::alloc::string::String,
+    >,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -145,8 +155,10 @@ pub struct TracepointAttachInfo {
     #[prost(string, tag = "1")]
     pub tracepoint: ::prost::alloc::string::String,
     #[prost(map = "string, string", tag = "2")]
-    pub metadata:
-        ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
+    pub metadata: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        ::prost::alloc::string::String,
+    >,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -158,8 +170,10 @@ pub struct KprobeAttachInfo {
     #[prost(int32, optional, tag = "3")]
     pub container_pid: ::core::option::Option<i32>,
     #[prost(map = "string, string", tag = "4")]
-    pub metadata:
-        ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
+    pub metadata: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        ::prost::alloc::string::String,
+    >,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -175,27 +189,45 @@ pub struct UprobeAttachInfo {
     #[prost(int32, optional, tag = "5")]
     pub container_pid: ::core::option::Option<i32>,
     #[prost(map = "string, string", tag = "6")]
-    pub metadata:
-        ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
+    pub metadata: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        ::prost::alloc::string::String,
+    >,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct FentryAttachInfo {
     #[prost(map = "string, string", tag = "1")]
-    pub metadata:
-        ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
+    pub metadata: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        ::prost::alloc::string::String,
+    >,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct FexitAttachInfo {
     #[prost(map = "string, string", tag = "1")]
-    pub metadata:
-        ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
+    pub metadata: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        ::prost::alloc::string::String,
+    >,
+}
+/// LsmAttachInfo represents the program specific metadata which bpfman
+/// needs to attach an LSM program. The hook is fixed at load time so
+/// no additional fields are required here.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct LsmAttachInfo {
+    #[prost(map = "string, string", tag = "1")]
+    pub metadata: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        ::prost::alloc::string::String,
+    >,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct AttachInfo {
-    #[prost(oneof = "attach_info::Info", tags = "1, 2, 3, 4, 5, 6, 7, 8")]
+    #[prost(oneof = "attach_info::Info", tags = "1, 2, 3, 4, 5, 6, 7, 8, 9")]
     pub info: ::core::option::Option<attach_info::Info>,
 }
 /// Nested message and enum types in `AttachInfo`.
@@ -219,6 +251,8 @@ pub mod attach_info {
         FentryAttachInfo(super::FentryAttachInfo),
         #[prost(message, tag = "8")]
         FexitAttachInfo(super::FexitAttachInfo),
+        #[prost(message, tag = "9")]
+        LsmAttachInfo(super::LsmAttachInfo),
     }
 }
 /// LoadRequest represents a request to load and attach a bpf program.
@@ -228,11 +262,15 @@ pub struct LoadRequest {
     #[prost(message, optional, tag = "1")]
     pub bytecode: ::core::option::Option<BytecodeLocation>,
     #[prost(map = "string, string", tag = "5")]
-    pub metadata:
-        ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
+    pub metadata: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        ::prost::alloc::string::String,
+    >,
     #[prost(map = "string, bytes", tag = "6")]
-    pub global_data:
-        ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::vec::Vec<u8>>,
+    pub global_data: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        ::prost::alloc::vec::Vec<u8>,
+    >,
     #[prost(string, optional, tag = "7")]
     pub uuid: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(uint32, optional, tag = "8")]
@@ -265,11 +303,18 @@ pub struct FexitLoadInfo {
     #[prost(string, tag = "1")]
     pub fn_name: ::prost::alloc::string::String,
 }
+/// LsmLoadInfo contains the program-specific load information for LoadInfo.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct LsmLoadInfo {
+    #[prost(string, tag = "1")]
+    pub hook_name: ::prost::alloc::string::String,
+}
 /// ProgSpecificInfo contains the program-specific load information for LoadInfo.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ProgSpecificInfo {
-    #[prost(oneof = "prog_specific_info::Info", tags = "1, 2")]
+    #[prost(oneof = "prog_specific_info::Info", tags = "1, 2, 3")]
     pub info: ::core::option::Option<prog_specific_info::Info>,
 }
 /// Nested message and enum types in `ProgSpecificInfo`.
@@ -281,6 +326,8 @@ pub mod prog_specific_info {
         FentryLoadInfo(super::FentryLoadInfo),
         #[prost(message, tag = "2")]
         FexitLoadInfo(super::FexitLoadInfo),
+        #[prost(message, tag = "3")]
+        LsmLoadInfo(super::LsmLoadInfo),
     }
 }
 /// LoadResponseInfo represents the state for a single eBPF program that is maintained
@@ -351,8 +398,10 @@ pub struct ListRequest {
     #[prost(bool, optional, tag = "2")]
     pub bpfman_programs_only: ::core::option::Option<bool>,
     #[prost(map = "string, string", tag = "3")]
-    pub match_metadata:
-        ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
+    pub match_metadata: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        ::prost::alloc::string::String,
+    >,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -405,6 +454,7 @@ pub enum BpfmanProgramType {
     Fentry = 5,
     Fexit = 6,
     Tcx = 7,
+    Lsm = 8,
 }
 impl BpfmanProgramType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -421,6 +471,7 @@ impl BpfmanProgramType {
             BpfmanProgramType::Fentry => "FENTRY",
             BpfmanProgramType::Fexit => "FEXIT",
             BpfmanProgramType::Tcx => "TCX",
+            BpfmanProgramType::Lsm => "LSM",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -434,6 +485,7 @@ impl BpfmanProgramType {
             "FENTRY" => Some(Self::Fentry),
             "FEXIT" => Some(Self::Fexit),
             "TCX" => Some(Self::Tcx),
+            "LSM" => Some(Self::Lsm),
             _ => None,
         }
     }
@@ -441,8 +493,8 @@ impl BpfmanProgramType {
 /// Generated client implementations.
 pub mod bpfman_client {
     #![allow(unused_variables, dead_code, missing_docs, clippy::let_unit_value)]
-    use tonic::codegen::http::Uri;
     use tonic::codegen::*;
+    use tonic::codegen::http::Uri;
     #[derive(Debug, Clone)]
     pub struct BpfmanClient<T> {
         inner: tonic::client::Grpc<T>,
@@ -475,8 +527,9 @@ pub mod bpfman_client {
                     <T as tonic::client::GrpcService<tonic::body::BoxBody>>::ResponseBody,
                 >,
             >,
-            <T as tonic::codegen::Service<http::Request<tonic::body::BoxBody>>>::Error:
-                Into<StdError> + Send + Sync,
+            <T as tonic::codegen::Service<
+                http::Request<tonic::body::BoxBody>,
+            >>::Error: Into<StdError> + Send + Sync,
         {
             BpfmanClient::new(InterceptedService::new(inner, interceptor))
         }
@@ -515,100 +568,117 @@ pub mod bpfman_client {
             &mut self,
             request: impl tonic::IntoRequest<super::LoadRequest>,
         ) -> std::result::Result<tonic::Response<super::LoadResponse>, tonic::Status> {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::new(
-                    tonic::Code::Unknown,
-                    format!("Service was not ready: {}", e.into()),
-                )
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static("/bpfman.v1.Bpfman/Load");
             let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("bpfman.v1.Bpfman", "Load"));
+            req.extensions_mut().insert(GrpcMethod::new("bpfman.v1.Bpfman", "Load"));
             self.inner.unary(req, path, codec).await
         }
         pub async fn unload(
             &mut self,
             request: impl tonic::IntoRequest<super::UnloadRequest>,
         ) -> std::result::Result<tonic::Response<super::UnloadResponse>, tonic::Status> {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::new(
-                    tonic::Code::Unknown,
-                    format!("Service was not ready: {}", e.into()),
-                )
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static("/bpfman.v1.Bpfman/Unload");
             let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("bpfman.v1.Bpfman", "Unload"));
+            req.extensions_mut().insert(GrpcMethod::new("bpfman.v1.Bpfman", "Unload"));
             self.inner.unary(req, path, codec).await
         }
         pub async fn attach(
             &mut self,
             request: impl tonic::IntoRequest<super::AttachRequest>,
         ) -> std::result::Result<tonic::Response<super::AttachResponse>, tonic::Status> {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::new(
-                    tonic::Code::Unknown,
-                    format!("Service was not ready: {}", e.into()),
-                )
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static("/bpfman.v1.Bpfman/Attach");
             let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("bpfman.v1.Bpfman", "Attach"));
+            req.extensions_mut().insert(GrpcMethod::new("bpfman.v1.Bpfman", "Attach"));
             self.inner.unary(req, path, codec).await
         }
         pub async fn detach(
             &mut self,
             request: impl tonic::IntoRequest<super::DetachRequest>,
         ) -> std::result::Result<tonic::Response<super::DetachResponse>, tonic::Status> {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::new(
-                    tonic::Code::Unknown,
-                    format!("Service was not ready: {}", e.into()),
-                )
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static("/bpfman.v1.Bpfman/Detach");
             let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("bpfman.v1.Bpfman", "Detach"));
+            req.extensions_mut().insert(GrpcMethod::new("bpfman.v1.Bpfman", "Detach"));
             self.inner.unary(req, path, codec).await
         }
         pub async fn list(
             &mut self,
             request: impl tonic::IntoRequest<super::ListRequest>,
         ) -> std::result::Result<tonic::Response<super::ListResponse>, tonic::Status> {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::new(
-                    tonic::Code::Unknown,
-                    format!("Service was not ready: {}", e.into()),
-                )
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static("/bpfman.v1.Bpfman/List");
             let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("bpfman.v1.Bpfman", "List"));
+            req.extensions_mut().insert(GrpcMethod::new("bpfman.v1.Bpfman", "List"));
             self.inner.unary(req, path, codec).await
         }
         pub async fn pull_bytecode(
             &mut self,
             request: impl tonic::IntoRequest<super::PullBytecodeRequest>,
-        ) -> std::result::Result<tonic::Response<super::PullBytecodeResponse>, tonic::Status>
-        {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::new(
-                    tonic::Code::Unknown,
-                    format!("Service was not ready: {}", e.into()),
-                )
-            })?;
+        ) -> std::result::Result<
+            tonic::Response<super::PullBytecodeResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static("/bpfman.v1.Bpfman/PullBytecode");
+            let path = http::uri::PathAndQuery::from_static(
+                "/bpfman.v1.Bpfman/PullBytecode",
+            );
             let mut req = request.into_request();
             req.extensions_mut()
                 .insert(GrpcMethod::new("bpfman.v1.Bpfman", "PullBytecode"));
@@ -618,17 +688,19 @@ pub mod bpfman_client {
             &mut self,
             request: impl tonic::IntoRequest<super::GetRequest>,
         ) -> std::result::Result<tonic::Response<super::GetResponse>, tonic::Status> {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::new(
-                    tonic::Code::Unknown,
-                    format!("Service was not ready: {}", e.into()),
-                )
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static("/bpfman.v1.Bpfman/Get");
             let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("bpfman.v1.Bpfman", "Get"));
+            req.extensions_mut().insert(GrpcMethod::new("bpfman.v1.Bpfman", "Get"));
             self.inner.unary(req, path, codec).await
         }
     }
@@ -663,7 +735,10 @@ pub mod bpfman_server {
         async fn pull_bytecode(
             &self,
             request: tonic::Request<super::PullBytecodeRequest>,
-        ) -> std::result::Result<tonic::Response<super::PullBytecodeResponse>, tonic::Status>;
+        ) -> std::result::Result<
+            tonic::Response<super::PullBytecodeResponse>,
+            tonic::Status,
+        >;
         async fn get(
             &self,
             request: tonic::Request<super::GetRequest>,
@@ -692,7 +767,10 @@ pub mod bpfman_server {
                 max_encoding_message_size: None,
             }
         }
-        pub fn with_interceptor<F>(inner: T, interceptor: F) -> InterceptedService<Self, F>
+        pub fn with_interceptor<F>(
+            inner: T,
+            interceptor: F,
+        ) -> InterceptedService<Self, F>
         where
             F: tonic::service::Interceptor,
         {
@@ -748,15 +826,21 @@ pub mod bpfman_server {
                 "/bpfman.v1.Bpfman/Load" => {
                     #[allow(non_camel_case_types)]
                     struct LoadSvc<T: Bpfman>(pub Arc<T>);
-                    impl<T: Bpfman> tonic::server::UnaryService<super::LoadRequest> for LoadSvc<T> {
+                    impl<T: Bpfman> tonic::server::UnaryService<super::LoadRequest>
+                    for LoadSvc<T> {
                         type Response = super::LoadResponse;
-                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::LoadRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
-                            let fut = async move { <T as Bpfman>::load(&inner, request).await };
+                            let fut = async move {
+                                <T as Bpfman>::load(&inner, request).await
+                            };
                             Box::pin(fut)
                         }
                     }
@@ -786,15 +870,21 @@ pub mod bpfman_server {
                 "/bpfman.v1.Bpfman/Unload" => {
                     #[allow(non_camel_case_types)]
                     struct UnloadSvc<T: Bpfman>(pub Arc<T>);
-                    impl<T: Bpfman> tonic::server::UnaryService<super::UnloadRequest> for UnloadSvc<T> {
+                    impl<T: Bpfman> tonic::server::UnaryService<super::UnloadRequest>
+                    for UnloadSvc<T> {
                         type Response = super::UnloadResponse;
-                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::UnloadRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
-                            let fut = async move { <T as Bpfman>::unload(&inner, request).await };
+                            let fut = async move {
+                                <T as Bpfman>::unload(&inner, request).await
+                            };
                             Box::pin(fut)
                         }
                     }
@@ -824,15 +914,21 @@ pub mod bpfman_server {
                 "/bpfman.v1.Bpfman/Attach" => {
                     #[allow(non_camel_case_types)]
                     struct AttachSvc<T: Bpfman>(pub Arc<T>);
-                    impl<T: Bpfman> tonic::server::UnaryService<super::AttachRequest> for AttachSvc<T> {
+                    impl<T: Bpfman> tonic::server::UnaryService<super::AttachRequest>
+                    for AttachSvc<T> {
                         type Response = super::AttachResponse;
-                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::AttachRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
-                            let fut = async move { <T as Bpfman>::attach(&inner, request).await };
+                            let fut = async move {
+                                <T as Bpfman>::attach(&inner, request).await
+                            };
                             Box::pin(fut)
                         }
                     }
@@ -862,15 +958,21 @@ pub mod bpfman_server {
                 "/bpfman.v1.Bpfman/Detach" => {
                     #[allow(non_camel_case_types)]
                     struct DetachSvc<T: Bpfman>(pub Arc<T>);
-                    impl<T: Bpfman> tonic::server::UnaryService<super::DetachRequest> for DetachSvc<T> {
+                    impl<T: Bpfman> tonic::server::UnaryService<super::DetachRequest>
+                    for DetachSvc<T> {
                         type Response = super::DetachResponse;
-                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::DetachRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
-                            let fut = async move { <T as Bpfman>::detach(&inner, request).await };
+                            let fut = async move {
+                                <T as Bpfman>::detach(&inner, request).await
+                            };
                             Box::pin(fut)
                         }
                     }
@@ -900,15 +1002,21 @@ pub mod bpfman_server {
                 "/bpfman.v1.Bpfman/List" => {
                     #[allow(non_camel_case_types)]
                     struct ListSvc<T: Bpfman>(pub Arc<T>);
-                    impl<T: Bpfman> tonic::server::UnaryService<super::ListRequest> for ListSvc<T> {
+                    impl<T: Bpfman> tonic::server::UnaryService<super::ListRequest>
+                    for ListSvc<T> {
                         type Response = super::ListResponse;
-                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::ListRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
-                            let fut = async move { <T as Bpfman>::list(&inner, request).await };
+                            let fut = async move {
+                                <T as Bpfman>::list(&inner, request).await
+                            };
                             Box::pin(fut)
                         }
                     }
@@ -938,16 +1046,23 @@ pub mod bpfman_server {
                 "/bpfman.v1.Bpfman/PullBytecode" => {
                     #[allow(non_camel_case_types)]
                     struct PullBytecodeSvc<T: Bpfman>(pub Arc<T>);
-                    impl<T: Bpfman> tonic::server::UnaryService<super::PullBytecodeRequest> for PullBytecodeSvc<T> {
+                    impl<
+                        T: Bpfman,
+                    > tonic::server::UnaryService<super::PullBytecodeRequest>
+                    for PullBytecodeSvc<T> {
                         type Response = super::PullBytecodeResponse;
-                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::PullBytecodeRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
-                            let fut =
-                                async move { <T as Bpfman>::pull_bytecode(&inner, request).await };
+                            let fut = async move {
+                                <T as Bpfman>::pull_bytecode(&inner, request).await
+                            };
                             Box::pin(fut)
                         }
                     }
@@ -977,15 +1092,21 @@ pub mod bpfman_server {
                 "/bpfman.v1.Bpfman/Get" => {
                     #[allow(non_camel_case_types)]
                     struct GetSvc<T: Bpfman>(pub Arc<T>);
-                    impl<T: Bpfman> tonic::server::UnaryService<super::GetRequest> for GetSvc<T> {
+                    impl<T: Bpfman> tonic::server::UnaryService<super::GetRequest>
+                    for GetSvc<T> {
                         type Response = super::GetResponse;
-                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::GetRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
-                            let fut = async move { <T as Bpfman>::get(&inner, request).await };
+                            let fut = async move {
+                                <T as Bpfman>::get(&inner, request).await
+                            };
                             Box::pin(fut)
                         }
                     }
@@ -1012,14 +1133,18 @@ pub mod bpfman_server {
                     };
                     Box::pin(fut)
                 }
-                _ => Box::pin(async move {
-                    Ok(http::Response::builder()
-                        .status(200)
-                        .header("grpc-status", "12")
-                        .header("content-type", "application/grpc")
-                        .body(empty_body())
-                        .unwrap())
-                }),
+                _ => {
+                    Box::pin(async move {
+                        Ok(
+                            http::Response::builder()
+                                .status(200)
+                                .header("grpc-status", "12")
+                                .header("content-type", "application/grpc")
+                                .body(empty_body())
+                                .unwrap(),
+                        )
+                    })
+                }
             }
         }
     }

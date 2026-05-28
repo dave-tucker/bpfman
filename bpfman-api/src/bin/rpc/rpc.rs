@@ -5,8 +5,8 @@ use std::{path::PathBuf, sync::Arc};
 
 use anyhow::{anyhow, bail};
 use bpfman::types::{
-    AttachInfo, FentryProgram, FexitProgram, KprobeProgram, ListFilter, Location, Program,
-    ProgramData, TcProceedOn, TcProgram, TcxProgram, TracepointProgram, UprobeProgram,
+    AttachInfo, FentryProgram, FexitProgram, KprobeProgram, ListFilter, Location, LsmProgram,
+    Program, ProgramData, TcProceedOn, TcProgram, TcxProgram, TracepointProgram, UprobeProgram,
     XdpProceedOn, XdpProgram,
 };
 use bpfman_api::v1::{
@@ -80,6 +80,16 @@ impl BpfmanLoader {
                         Program::Fexit(FexitProgram::new(data, fexit.fn_name.clone())?)
                     } else {
                         bail!("missing FexitInfo");
+                    }
+                }
+                BpfmanProgramType::Lsm => {
+                    if let Some(ProgSpecificInfo {
+                        info: Some(bpfman_api::v1::prog_specific_info::Info::LsmLoadInfo(lsm)),
+                    }) = &info.info
+                    {
+                        Program::Lsm(LsmProgram::new(data, lsm.hook_name.clone())?)
+                    } else {
+                        bail!("missing LsmLoadInfo");
                     }
                 }
             };
@@ -239,6 +249,9 @@ impl BpfmanLoader {
                     metadata: i.metadata,
                 },
                 Some(Info::FexitAttachInfo(i)) => AttachInfo::Fexit {
+                    metadata: i.metadata,
+                },
+                Some(Info::LsmAttachInfo(i)) => AttachInfo::Lsm {
                     metadata: i.metadata,
                 },
                 None => bail!("missing attach_info"),

@@ -161,6 +161,7 @@ const UPROBE_TARGET: &str = "uprobe_target";
 
 const FENTRY_FN_NAME: &str = "fentry_fn_name";
 const FEXIT_FN_NAME: &str = "fexit_fn_name";
+const LSM_HOOK_NAME: &str = "lsm_hook_name";
 
 #[derive(Debug, Clone)]
 pub struct LinkData(pub(crate) sled::Tree);
@@ -808,6 +809,20 @@ impl FexitLink {
 }
 
 #[derive(Debug, Clone)]
+pub struct LsmLink(pub(crate) LinkData);
+impl LsmLink {
+    pub fn attach(&mut self, info: AttachInfo) -> Result<(), BpfmanError> {
+        match info {
+            AttachInfo::Lsm { metadata } => {
+                self.set_metadata(metadata)?;
+            }
+            _ => panic!("Invalid attach info"),
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum Link {
     Xdp(XdpLink),
     Tc(TcLink),
@@ -817,6 +832,7 @@ pub enum Link {
     Uprobe(UprobeLink),
     Fentry(FentryLink),
     Fexit(FexitLink),
+    Lsm(LsmLink),
 }
 
 #[derive(Debug, Clone)]
@@ -830,6 +846,7 @@ pub enum LinkType {
     Uprobe = 5,
     Fentry = 6,
     Fexit = 7,
+    Lsm = 8,
 }
 
 impl TryFrom<u32> for LinkType {
@@ -845,6 +862,7 @@ impl TryFrom<u32> for LinkType {
             5 => Ok(LinkType::Uprobe),
             6 => Ok(LinkType::Fentry),
             7 => Ok(LinkType::Fexit),
+            8 => Ok(LinkType::Lsm),
             _ => Err(BpfmanError::Error("Invalid link type".to_string())),
         }
     }
@@ -864,6 +882,7 @@ impl Link {
             LinkType::Uprobe => Link::Uprobe(UprobeLink(data)),
             LinkType::Fentry => Link::Fentry(FentryLink(data)),
             LinkType::Fexit => Link::Fexit(FexitLink(data)),
+            LinkType::Lsm => Link::Lsm(LsmLink(data)),
         }
     }
 
@@ -877,6 +896,7 @@ impl Link {
             Link::Uprobe(p) => p.0.set_program_id(program_id),
             Link::Fentry(p) => p.0.set_program_id(program_id),
             Link::Fexit(p) => p.0.set_program_id(program_id),
+            Link::Lsm(p) => p.0.set_program_id(program_id),
         }
     }
 
@@ -890,6 +910,7 @@ impl Link {
             Link::Uprobe(p) => p.0.set_program_name(prog_name),
             Link::Fentry(p) => p.0.set_program_name(prog_name),
             Link::Fexit(p) => p.0.set_program_name(prog_name),
+            Link::Lsm(p) => p.0.set_program_name(prog_name),
         }
     }
 
@@ -906,6 +927,7 @@ impl Link {
             LinkType::Uprobe => Ok(Link::Uprobe(UprobeLink(LinkData(tree)))),
             LinkType::Fentry => Ok(Link::Fentry(FentryLink(LinkData(tree)))),
             LinkType::Fexit => Ok(Link::Fexit(FexitLink(LinkData(tree)))),
+            LinkType::Lsm => Ok(Link::Lsm(LsmLink(LinkData(tree)))),
         }
     }
 
@@ -929,6 +951,7 @@ impl Link {
             Link::Uprobe(p) => p.0.get_id(),
             Link::Fentry(p) => p.0.get_id(),
             Link::Fexit(p) => p.0.get_id(),
+            Link::Lsm(p) => p.0.get_id(),
         }
     }
 
@@ -942,6 +965,7 @@ impl Link {
             Link::Uprobe(p) => p.0.get_program_id(),
             Link::Fentry(p) => p.0.get_program_id(),
             Link::Fexit(p) => p.0.get_program_id(),
+            Link::Lsm(p) => p.0.get_program_id(),
         }
     }
 
@@ -966,6 +990,7 @@ impl Link {
             Link::Uprobe(p) => p.0.get_program_name(),
             Link::Fentry(p) => p.0.get_program_name(),
             Link::Fexit(p) => p.0.get_program_name(),
+            Link::Lsm(p) => p.0.get_program_name(),
         }
     }
 
@@ -979,6 +1004,7 @@ impl Link {
             Link::Uprobe(p) => p.0.get_metadata(),
             Link::Fentry(p) => p.0.get_metadata(),
             Link::Fexit(p) => p.0.get_metadata(),
+            Link::Lsm(p) => p.0.get_metadata(),
         }
     }
 
@@ -1037,6 +1063,7 @@ impl Link {
             Link::Uprobe(p) => p.attach(info)?,
             Link::Fentry(p) => p.attach(info)?,
             Link::Fexit(p) => p.attach(info)?,
+            Link::Lsm(p) => p.attach(info)?,
         }
         Ok(())
     }
@@ -1130,6 +1157,7 @@ impl Link {
             Link::Uprobe(p) => p.0.finalize(root_db),
             Link::Fentry(p) => p.0.finalize(root_db),
             Link::Fexit(p) => p.0.finalize(root_db),
+            Link::Lsm(p) => p.0.finalize(root_db),
         }
     }
 
@@ -1322,6 +1350,13 @@ pub enum Program {
     /// and instrument the end of function execution.
     Fexit(FexitProgram),
 
+    /// An LSM (Linux Security Module) program.
+    ///
+    /// LSM programs attach to Linux Security Module hooks to implement
+    /// or observe security policy. The hook name is specified at load
+    /// time (e.g., "file_open", "socket_connect").
+    Lsm(LsmProgram),
+
     /// An unsupported BPF program type.
     ///
     /// This variant is used to represent BPF programs that are not
@@ -1376,6 +1411,9 @@ pub enum AttachInfo {
         metadata: HashMap<String, String>,
     },
     Fexit {
+        metadata: HashMap<String, String>,
+    },
+    Lsm {
         metadata: HashMap<String, String>,
     },
 }
@@ -2597,6 +2635,36 @@ impl FexitProgram {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct LsmProgram {
+    pub(crate) data: ProgramData,
+}
+
+impl LsmProgram {
+    pub fn new(data: ProgramData, hook_name: String) -> Result<Self, BpfmanError> {
+        let mut lsm_prog = Self { data };
+        lsm_prog.set_hook_name(hook_name)?;
+        lsm_prog.data.set_kind(BpfProgType::Lsm)?;
+        Ok(lsm_prog)
+    }
+
+    pub(crate) fn set_hook_name(&mut self, hook_name: String) -> Result<(), BpfmanError> {
+        sled_insert(&self.data.0, LSM_HOOK_NAME, hook_name.as_bytes())
+    }
+
+    pub fn get_hook_name(&self) -> Result<String, BpfmanError> {
+        sled_get(&self.data.0, LSM_HOOK_NAME).map(|v| bytes_to_string(&v))
+    }
+
+    pub(crate) fn get_data(&self) -> &ProgramData {
+        &self.data
+    }
+
+    pub(crate) fn get_data_mut(&mut self) -> &mut ProgramData {
+        &mut self.data
+    }
+}
+
 impl Program {
     pub fn kind(&self) -> BpfProgType {
         match self {
@@ -2608,6 +2676,7 @@ impl Program {
             Program::Uprobe(_) => BpfProgType::Probe,
             Program::Fentry(_) => BpfProgType::Tracing,
             Program::Fexit(_) => BpfProgType::Tracing,
+            Program::Lsm(_) => BpfProgType::Lsm,
             Program::Unsupported(i) => i.get_kernel_program_type().unwrap().try_into().unwrap(),
         }
     }
@@ -2622,6 +2691,7 @@ impl Program {
             Program::Uprobe(_) => LinkType::Uprobe,
             Program::Fentry(_) => LinkType::Fentry,
             Program::Fexit(_) => LinkType::Fexit,
+            Program::Lsm(_) => LinkType::Lsm,
             Program::Unsupported(_) => {
                 return Err(BpfmanError::Error("Unsupported program type".to_string()));
             }
@@ -2644,6 +2714,7 @@ impl Program {
             Program::Uprobe(p) => &mut p.data,
             Program::Fentry(p) => &mut p.data,
             Program::Fexit(p) => &mut p.data,
+            Program::Lsm(p) => &mut p.data,
             Program::Unsupported(p) => p,
         }
     }
@@ -2668,6 +2739,7 @@ impl Program {
             Program::Uprobe(p) => p.get_data(),
             Program::Fentry(p) => p.get_data(),
             Program::Fexit(p) => p.get_data(),
+            Program::Lsm(p) => p.get_data(),
             Program::Unsupported(p) => p,
         }
     }
@@ -2719,6 +2791,7 @@ impl Program {
                         Ok(Program::Fexit(FexitProgram { data }))
                     }
                 }
+                BpfProgType::Lsm => Ok(Program::Lsm(LsmProgram { data })),
                 _ => Err(BpfmanError::Error("Unsupported program type".to_string())),
             },
             None => Err(BpfmanError::Error("Unsupported program type".to_string())),
@@ -2735,6 +2808,7 @@ impl Program {
             Program::Uprobe(p) => p.get_data().remove_link(root_db, link),
             Program::Fentry(p) => p.get_data().remove_link(root_db, link),
             Program::Fexit(p) => p.get_data().remove_link(root_db, link),
+            Program::Lsm(p) => p.get_data().remove_link(root_db, link),
             Program::Unsupported(_) => {
                 Err(BpfmanError::Error("Unsupported program type".to_string()))
             }
@@ -3852,4 +3926,5 @@ impl_get_metadata!(
     UprobeLink,
     FentryLink,
     FexitLink,
+    LsmLink,
 );

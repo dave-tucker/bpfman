@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# Patch the deployment.yaml to change container image in DaemonSet.
+images:
+- name: quay.io/bpfman-userspace/go-block-dirtyfrag
+  newName: quay.io/bpfman-userspace/go-block-dirtyfrag
+  newTag: latest
+# Patch the bytecode.yaml to change the byteCode.image.url field.
+# patch.yaml is generated from patch.yaml.env by the Makefile sed step.
+patches:
+- path: patch.yaml
+  target:
+    kind: ClusterBpfApplication
+    name: go-block-dirtyfrag
+resources:
+- ../../base/go-block-dirtyfrag

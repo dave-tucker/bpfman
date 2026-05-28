@@ -1,0 +1,33 @@
+ARG BUILDPLATFORM=linux/amd64
+
+FROM --platform=$BUILDPLATFORM golang:1.22 AS go-block-dirtyfrag-build
+
+ARG BUILDPLATFORM
+ARG TARGETARCH
+ARG TARGETOS
+ARG TARGETPLATFORM
+
+RUN echo "TARGETOS=${TARGETOS}  TARGETARCH=${TARGETARCH}  BUILDPLATFORM=${BUILDPLATFORM}  TARGETPLATFORM=${TARGETPLATFORM}"
+
+RUN apt-get update && apt-get install -y \
+    clang \
+    gcc-multilib \
+    libbpf-dev
+
+WORKDIR /usr/src/bpfman/
+COPY ./ /usr/src/bpfman/
+
+WORKDIR /usr/src/bpfman/examples/go-block-dirtyfrag
+
+# Generate bpf2go bindings (compiles BPF C → .o and generates Go type stubs)
+RUN go generate ./...
+
+# Build the userspace binary
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -o go-block-dirtyfrag .
+
+
+FROM registry.fedoraproject.org/fedora-minimal:latest
+
+COPY --from=go-block-dirtyfrag-build /usr/src/bpfman/examples/go-block-dirtyfrag/go-block-dirtyfrag .
+
+ENTRYPOINT ["./go-block-dirtyfrag"]

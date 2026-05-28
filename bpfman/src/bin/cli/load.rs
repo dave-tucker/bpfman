@@ -7,8 +7,9 @@ use anyhow::bail;
 use bpfman::{
     add_programs, setup,
     types::{
-        FentryProgram, FexitProgram, KprobeProgram, Link, Location, METADATA_APPLICATION_TAG,
-        Program, ProgramData, TcProgram, TcxProgram, TracepointProgram, UprobeProgram, XdpProgram,
+        FentryProgram, FexitProgram, KprobeProgram, Link, Location, LsmProgram,
+        METADATA_APPLICATION_TAG, Program, ProgramData, TcProgram, TcxProgram, TracepointProgram,
+        UprobeProgram, XdpProgram,
     },
 };
 use log::warn;
@@ -96,8 +97,8 @@ pub(crate) fn execute_load_image(args: &LoadImageArgs) -> anyhow::Result<()> {
         let name = parts
             .first()
             .ok_or_else(|| anyhow::anyhow!("Missing program name"))?;
-        if (prog_type == "fentry" || prog_type == "fexit") && parts.len() != 2 {
-            bail!("Missing function name for fentry/fexit program");
+        if (prog_type == "fentry" || prog_type == "fexit" || prog_type == "lsm") && parts.len() != 2 {
+            bail!("Missing function name for fentry/fexit/lsm program");
         }
         let data = ProgramData::new(
             bytecode_source.clone(),
@@ -124,6 +125,10 @@ pub(crate) fn execute_load_image(args: &LoadImageArgs) -> anyhow::Result<()> {
             "fexit" => {
                 let fn_name = parts.get(1).unwrap().clone();
                 Program::Fexit(FexitProgram::new(data, fn_name)?)
+            }
+            "lsm" => {
+                let hook_name = parts.get(1).unwrap().clone();
+                Program::Lsm(LsmProgram::new(data, hook_name)?)
             }
             _ => bail!("Unknown program type: {prog_type}"),
         };

@@ -13,13 +13,14 @@ use anyhow::anyhow;
 use aya::{
     Btf, Ebpf, EbpfLoader,
     programs::{
-        Extension, FEntry, FExit, KProbe, LinkOrder as AyaLinkOrder, ProbeKind, SchedClassifier,
-        TcAttachType, TracePoint, UProbe,
+        Extension, FEntry, FExit, KProbe, LinkOrder as AyaLinkOrder, Lsm, ProbeKind,
+        SchedClassifier, TcAttachType, TracePoint, UProbe,
         fentry::FEntryLink,
         fexit::FExitLink,
         kprobe::KProbeLink,
         links::FdLink,
         loaded_programs,
+        lsm::LsmLink,
         tc::{SchedClassifierLink, TcAttachOptions},
         trace_point::TracePointLink,
         uprobe::UProbeLink,
@@ -496,6 +497,7 @@ fn attach_program_internal(
         | Program::Uprobe(_)
         | Program::Fentry(_)
         | Program::Fexit(_)
+        | Program::Lsm(_)
         | Program::Unsupported(_) => attach_single_attach_program(root_db, &mut link),
     } {
         link.delete(root_db)?;
@@ -557,6 +559,7 @@ fn detach_program_internal(
         | Program::Uprobe(_)
         | Program::Fentry(_)
         | Program::Fexit(_)
+        | Program::Lsm(_)
         | Program::Unsupported(_) => {
             detach_single_attach_program(root_db, &mut program, link)?;
         }
@@ -1359,6 +1362,23 @@ pub(crate) fn load_program(
 
             Ok(id)
         }
+        Program::Lsm(ref mut program) => {
+            let hook_name = program.get_hook_name()?;
+            let btf = Btf::from_sys_fs()?;
+            let lsm: &mut Lsm = raw_program.try_into()?;
+            lsm
+                .load(&hook_name, &btf)
+                .map_err(BpfmanError::BpfProgramError)?;
+            program.get_data_mut().set_kernel_info(&lsm.info()?)?;
+
+            let id = program.data.get_id()?;
+
+            lsm
+                .pin(format!("{RTDIR_FS}/prog_{id}"))
+                .map_err(BpfmanError::UnableToPinProgram)?;
+
+            Ok(id)
+        }
         Program::Tcx(ref mut program) => {
             debug!("Loading TCX program");
             let tcx: &mut SchedClassifier = raw_program.try_into()?;
@@ -1625,6 +1645,25 @@ pub(crate) fn attach_single_attach_program(root_db: &Db, l: &mut Link) -> Result
 
             let link_id = fexit.attach()?;
             let owned_link: FExitLink = fexit.take_link(link_id)?;
+            let fd_link: FdLink = owned_link.into();
+
+            fd_link
+                .pin(format!("{RTDIR_FS_LINKS}/{id}"))
+                .map_err(BpfmanError::UnableToPinLink)?;
+            Ok(())
+        }
+        Link::Lsm(_link) => {
+            if let Program::Lsm(_) = get_program(root_db, prog_id)? {
+                Ok(())
+            } else {
+                Err(BpfmanError::InvalidAttach(
+                    "program is not an lsm program".to_string(),
+                ))
+            }?;
+            let mut lsm: Lsm = Lsm::from_pin(format!("{RTDIR_FS}/prog_{prog_id}"))?;
+
+            let link_id = lsm.attach()?;
+            let owned_link: LsmLink = lsm.take_link(link_id)?;
             let fd_link: FdLink = owned_link.into();
 
             fd_link

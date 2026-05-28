@@ -5,7 +5,7 @@ use bpfman::{
     errors::BpfmanError,
     types::{BytecodeImage, Link, Location, Program},
 };
-use v1::FentryAttachInfo;
+use v1::{FentryAttachInfo, LsmAttachInfo};
 
 use crate::v1::{
     AttachInfo, BytecodeImage as V1BytecodeImage, BytecodeLocation,
@@ -125,7 +125,12 @@ impl TryFrom<&Link> for AttachInfo {
                 })),
             }),
             Link::Fexit(p) => Ok(AttachInfo {
-                info: Some(Info::FentryAttachInfo(FentryAttachInfo {
+                info: Some(Info::FexitAttachInfo(v1::FexitAttachInfo {
+                    metadata: p.get_metadata()?,
+                })),
+            }),
+            Link::Lsm(p) => Ok(AttachInfo {
+                info: Some(Info::LsmAttachInfo(LsmAttachInfo {
                     metadata: p.get_metadata()?,
                 })),
             }),

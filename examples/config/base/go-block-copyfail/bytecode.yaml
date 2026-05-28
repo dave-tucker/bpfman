@@ -1,0 +1,65 @@
+apiVersion: bpfman.io/v1alpha1
+kind: ClusterBpfApplication
+metadata:
+  labels:
+    app.kubernetes.io/name: go-block-copyfail
+  name: go-block-copyfail
+spec:
+  # Deploy on every node in the cluster.
+  nodeSelector: {}
+  byteCode:
+    image:
+      url: quay.io/bpfman-bytecode/go-block-copyfail:latest
+      imagePullPolicy: IfNotPresent
+  programs:
+    # CVE-2026-31431: block AF_ALG AEAD socket binds (algif_aead exploit path)
+    - name: block_copyfail
+      type: LSM
+      lsm:
+        hook: socket_bind
+        links:
+          - mode: Attach
+
+    # CVE-2026-43500: block AF_RXRPC socket creation (rxrpc/rxkad page-cache write path)
+    - name: block_rxrpc
+      type: LSM
+      lsm:
+        hook: socket_create
+        links:
+          - mode: Attach
+
+    # CVE-2026-43284: block MSG_SPLICE_PAGES on UDP sockets (kernel 6.4+)
+    - name: block_udp_splice
+      type: LSM
+      lsm:
+        hook: socket_sendmsg
+        links:
+          - mode: Attach
+
+    # CVE-2026-46300: tracepoint reads optval from userspace before the LSM
+    # hook fires so we can distinguish "espintcp" from other TCP_ULP strings
+    # (e.g. "tls") without blocking legitimate kTLS traffic.
+    - name: tp_setsockopt
+      type: TracePoint
+      tracepoint:
+        links:
+          - name: syscalls/sys_enter_setsockopt
+
+    # CVE-2026-46300: LSM hook blocks TCP_ULP espintcp when the tracepoint
+    # has flagged the current task.
+    - name: block_espintcp
+      type: LSM
+      lsm:
+        hook: socket_setsockopt
+        links:
+          - mode: Attach
+
+    # CVE-2026-43284: block UDP_ENCAP setsockopt from non-init net namespaces
+    # (prevents container-initiated ESP-in-UDP encapsulation while allowing
+    # host-level IPsec/VPN).
+    - name: block_udp_encap
+      type: LSM
+      lsm:
+        hook: socket_setsockopt
+        links:
+          - mode: Attach
